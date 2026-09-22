@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AndroidSimulator.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AndroidSimulator.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

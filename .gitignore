@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+rust/target/
+installer/AndroidSimulator.Installer/Payload/
+installer/payload/
+Netease/
+NVIDIA Corporation/
+.vs/
+*.user
+*.suo

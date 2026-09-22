@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-07-18T22:11:38.3243098+08:00",
+  "exe": "D:/vibecoding/project/Android simulator/release/android-monitor_Windows/debug/AndroidMonitor.App.exe",
+  "apk": "D:/vibecoding/release/curl_lens_android_native/debug/Curl-Lens-Native-debug.apk",
+  "package": "com.curlens.curl_url_clipboard",
+  "expectedOpenCommand": "\"D:/vibecoding/project/Android simulator/release/android-monitor_Windows/debug/AndroidMonitor.App.exe\" --apk \"%1\" --background",
+  "hijackedBeforeRepair": {
+    "extensionDefault": "MuMuPlayer.apk",
+    "openCommand": "\"D:\\vibecoding\\project\\Android simulator\\release\\android-monitor_Windows\\debug\\AndroidMonitor.App.exe\" --apk \"%1\" --background",
+    "openWithProgIdPresent": false,
+    "userChoicePresent": false,
+    "openWithListPresent": false
+  },
+  "afterAppStartupRepair": {
+    "extensionDefault": "AndroidMonitor.Apk",
+    "openCommand": "\"D:\\vibecoding\\project\\Android simulator\\release\\android-monitor_Windows\\debug\\AndroidMonitor.App.exe\" --apk \"%1\" --background",
+    "openWithProgIdPresent": true,
+    "userChoicePresent": false,
+    "openWithListPresent": false
+  },
+  "startupRepairPassed": false,
+  "shellExecuteProcessId": 3848,
+  "capturedShellExecuteCommandLines": [
+    {
+      "processId": 3848,
+      "executablePath": "D:\\vibecoding\\project\\Android simulator\\release\\android-monitor_Windows\\debug\\AndroidMonitor.App.exe",
+      "commandLine": "\"D:\\vibecoding\\project\\Android simulator\\release\\android-monitor_Windows\\debug\\AndroidMonitor.App.exe\" --apk \"D:\\vibecoding\\release\\curl_lens_android_native\\debug\\Curl-Lens-Native-debug.apk\" --background"
+    }
+  ],
+  "shellExecutePassed": true,
+  "shortcutMatches": [],
+  "shortcutUpdatedDuringSmoke": false,
+  "afterShellExecuteRegistry": {
+    "extensionDefault": "AndroidMonitor.Apk",
+    "openCommand": "\"D:\\vibecoding\\project\\Android simulator\\release\\android-monitor_Windows\\debug\\AndroidMonitor.App.exe\" --apk \"%1\" --background",
+    "openWithProgIdPresent": true,
+    "userChoicePresent": false,
+    "openWithListPresent": false
+  },
+  "stoppedNewAndroidMonitorPids": [
+    3848
+  ],
+  "stoppedNewScrcpyPids": [
+    40480
+  ]
+}

@@ -1,0 +1,150 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <AssemblyName>AndroidSimulator.App</AssemblyName>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>1.1.0</InformationalVersion>
+    <RootNamespace>AndroidSimulator.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained Condition="'$(Configuration)' == 'Debug'">true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained Condition="'$(Configuration)' != 'Debug'">false</WindowsAppSDKSelfContained>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <TieredPGO>true</TieredPGO>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <MSBuildEnableWorkloadResolver>false</MSBuildEnableWorkloadResolver>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\SplashScreen.scale-200.png" />
+    <Content Include="Assets\LockScreenLogo.scale-200.png" />
+    <Content Include="Assets\Square150x150Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" />
+    <Content Include="Assets\StoreLogo.png" />
+    <Content Include="Assets\AppIcon.ico" />
+    <Content Include="Assets\AndroidIcon.ico" />
+    <Content Include="Assets\AndroidIcon.png" />
+    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content
+      Include="..\..\rust\target\debug\simulatorctl.exe"
+      Link="simulatorctl.exe"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' == 'Debug' and Exists('..\..\rust\target\debug\simulatorctl.exe')" />
+    <Content
+      Include="..\..\rust\target\release\androidsimulator-host.exe"
+      Link="AndroidSimulator.Host.exe"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' == 'Debug' and Exists('..\..\rust\target\release\androidsimulator-host.exe')" />
+    <Content
+      Include="..\..\rust\target\release\simulatorctl.exe"
+      Link="simulatorctl.exe"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' != 'Debug' and Exists('..\..\rust\target\release\simulatorctl.exe')" />
+    <Content
+      Include="..\..\rust\target\release\androidsimulator-host.exe"
+      Link="AndroidSimulator.Host.exe"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' != 'Debug' and Exists('..\..\rust\target\release\androidsimulator-host.exe')" />
+    <Content
+      Include="..\..\rust\target\debug\androidsimulator_apkicon.dll"
+      Link="AndroidSimulator.ApkIcon.dll"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' == 'Debug' and Exists('..\..\rust\target\debug\androidsimulator_apkicon.dll')" />
+    <Content
+      Include="..\..\rust\target\release\androidsimulator_apkicon.dll"
+      Link="AndroidSimulator.ApkIcon.dll"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' != 'Debug' and Exists('..\..\rust\target\release\androidsimulator_apkicon.dll')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!--
+    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
+    Tools extension to be activated for this project even if the Windows App SDK Nuget
+    package has not yet been restored.
+  -->
+  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <ProjectCapability Include="Msix" />
+  </ItemGroup>
+
+  <!--
+    Microsoft.Windows.SDK.BuildTools.WinApp adds first-class support for
+    `dotnet run` on packaged WinUI apps: it hooks the .NET CLI Run target to
+    register a debug identity via the winapp CLI and launch the app with
+    package identity (AUMID).
+    Set <EnableWinAppRunSupport>false</EnableWinAppRunSupport> in a
+    <PropertyGroup> above to opt out.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.2.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.2.0" />
+  </ItemGroup>
+
+  <!--
+    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
+    Explorer "Package and Publish" context menu entry to be enabled for this project even if
+    the Windows App SDK Nuget package has not yet been restored.
+  -->
+  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+  </PropertyGroup>
+
+  <!-- Publish Properties -->
+  <PropertyGroup>
+    <PublishReadyToRun>False</PublishReadyToRun>
+    <PublishTrimmed>False</PublishTrimmed>
+    <Optimize Condition="'$(Configuration)' != 'Debug'">True</Optimize>
+    <DebugSymbols Condition="'$(Configuration)' != 'Debug'">False</DebugSymbols>
+    <DebugType Condition="'$(Configuration)' != 'Debug'">None</DebugType>
+    <SatelliteResourceLanguages Condition="'$(Configuration)' != 'Debug'">zh-Hans;en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    The componentized WinUI package generates the app PRI/XBF payload in
+    TargetDir, but the .NET Publish target does not carry that payload into
+    PublishDir.  An unpackaged app needs these files beside the executable;
+    without them Application.LoadComponent terminates with 0xC000027B.
+  -->
+  <Target Name="CopyWinUIResourcesToPublish"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_WinUIPublishPri Include="$(TargetDir)$(AssemblyName).pri"
+                        Condition="Exists('$(TargetDir)$(AssemblyName).pri')" />
+      <_WinUIPublishXbf Include="$(TargetDir)**\*.xbf" />
+      <_WinUIPublishAsset Include="$(TargetDir)Assets\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WinUIPublishPri)"
+          DestinationFiles="@(_WinUIPublishPri->'$(PublishDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WinUIPublishXbf)"
+          DestinationFiles="@(_WinUIPublishXbf->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WinUIPublishAsset)"
+          DestinationFiles="@(_WinUIPublishAsset->'$(PublishDir)Assets\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

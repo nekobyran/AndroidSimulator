@@ -1,0 +1,351 @@
+<Window x:Class="AndroidSimulator.Installer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Android Simulator"
+        Width="920"
+        Height="600"
+        MinWidth="860"
+        MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource TextBrush}"
+        FontFamily="Segoe UI Variable, Segoe UI"
+        ResizeMode="CanMinimize">
+  <Window.Resources>
+    <Storyboard x:Key="IntroStoryboard" RepeatBehavior="Forever">
+      <DoubleAnimation Storyboard.TargetName="GlowOrb"
+                       Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                       From="-10" To="14" Duration="0:0:3.2" AutoReverse="True">
+        <DoubleAnimation.EasingFunction>
+          <SineEase EasingMode="EaseInOut"/>
+        </DoubleAnimation.EasingFunction>
+      </DoubleAnimation>
+      <DoubleAnimation Storyboard.TargetName="GlowOrb"
+                       Storyboard.TargetProperty="Opacity"
+                       From="0.35" To="0.75" Duration="0:0:2.4" AutoReverse="True">
+        <DoubleAnimation.EasingFunction>
+          <SineEase EasingMode="EaseInOut"/>
+        </DoubleAnimation.EasingFunction>
+      </DoubleAnimation>
+      <DoubleAnimation Storyboard.TargetName="RingA"
+                       Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                       From="0" To="360" Duration="0:0:12" RepeatBehavior="Forever"/>
+      <DoubleAnimation Storyboard.TargetName="RingB"
+                       Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                       From="360" To="0" Duration="0:0:18" RepeatBehavior="Forever"/>
+    </Storyboard>
+
+    <Storyboard x:Key="PageEnterStoryboard">
+      <DoubleAnimation Storyboard.TargetName="ContentHost"
+                       Storyboard.TargetProperty="Opacity"
+                       From="0" To="1" Duration="0:0:0.35">
+        <DoubleAnimation.EasingFunction>
+          <CubicEase EasingMode="EaseOut"/>
+        </DoubleAnimation.EasingFunction>
+      </DoubleAnimation>
+      <ThicknessAnimation Storyboard.TargetName="ContentHost"
+                          Storyboard.TargetProperty="Margin"
+                          From="0,24,0,0" To="0,0,0,0" Duration="0:0:0.4">
+        <ThicknessAnimation.EasingFunction>
+          <CubicEase EasingMode="EaseOut"/>
+        </ThicknessAnimation.EasingFunction>
+      </ThicknessAnimation>
+    </Storyboard>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.Background>
+      <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#0B1220" Offset="0"/>
+        <GradientStop Color="#121A2B" Offset="0.55"/>
+        <GradientStop Color="#1A1320" Offset="1"/>
+      </LinearGradientBrush>
+    </Grid.Background>
+
+    <Ellipse x:Name="GlowOrb"
+             Width="360" Height="360"
+             HorizontalAlignment="Left"
+             VerticalAlignment="Top"
+             Margin="-80,-40,0,0"
+             Opacity="0.45">
+      <Ellipse.Fill>
+        <RadialGradientBrush>
+          <GradientStop Color="#66FF8A3D" Offset="0"/>
+          <GradientStop Color="#00FF8A3D" Offset="1"/>
+        </RadialGradientBrush>
+      </Ellipse.Fill>
+      <Ellipse.RenderTransform>
+        <TranslateTransform Y="0"/>
+      </Ellipse.RenderTransform>
+    </Ellipse>
+
+    <Grid Margin="28">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="320"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+
+      <!-- Left brand panel -->
+      <Border Grid.Column="0"
+              Margin="0,0,18,0"
+              Background="#99121A2B"
+              BorderBrush="{StaticResource LineBrush}"
+              BorderThickness="1"
+              CornerRadius="22"
+              Padding="28">
+        <Grid>
+          <StackPanel VerticalAlignment="Top">
+            <Grid Width="132" Height="132" HorizontalAlignment="Left" Margin="0,8,0,20">
+              <Ellipse x:Name="RingA"
+                       Stroke="#55FF8A3D"
+                       StrokeThickness="2"
+                       StrokeDashArray="2 2">
+                <Ellipse.RenderTransform>
+                  <RotateTransform CenterX="66" CenterY="66"/>
+                </Ellipse.RenderTransform>
+              </Ellipse>
+              <Ellipse x:Name="RingB"
+                       Margin="12"
+                       Stroke="#3340C4FF"
+                       StrokeThickness="2"
+                       StrokeDashArray="1 3">
+                <Ellipse.RenderTransform>
+                  <RotateTransform CenterX="54" CenterY="54"/>
+                </Ellipse.RenderTransform>
+              </Ellipse>
+              <Border Width="78" Height="78"
+                      Background="#221A0F"
+                      BorderBrush="#66FF8A3D"
+                      BorderThickness="1"
+                      CornerRadius="20"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+                <Image Source="pack://application:,,,/AppIcon.ico"
+                       Width="42" Height="42"
+                       Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+              </Border>
+            </Grid>
+
+            <TextBlock Text="Android Simulator"
+                       FontSize="28"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,8"/>
+            <TextBlock Text="Windows 启动器安装向导"
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="14"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,18"/>
+
+            <StackPanel x:Name="StepList" Margin="0,8,0,0">
+              <Border x:Name="StepWelcome" Style="{x:Null}" Background="Transparent" Padding="10,8" CornerRadius="10" Margin="0,0,0,6">
+                <TextBlock Text="1  欢迎" FontSize="14"/>
+              </Border>
+              <Border x:Name="StepOptions" Padding="10,8" CornerRadius="10" Margin="0,0,0,6">
+                <TextBlock Text="2  安装选项" FontSize="14"/>
+              </Border>
+              <Border x:Name="StepProgress" Padding="10,8" CornerRadius="10" Margin="0,0,0,6">
+                <TextBlock Text="3  安装中" FontSize="14"/>
+              </Border>
+              <Border x:Name="StepDone" Padding="10,8" CornerRadius="10">
+                <TextBlock Text="4  完成" FontSize="14"/>
+              </Border>
+            </StackPanel>
+          </StackPanel>
+
+          <TextBlock VerticalAlignment="Bottom"
+                     Foreground="{StaticResource MutedBrush}"
+                     FontSize="12"
+                     Text="完整 Android 运行时在首次启动时准备&#x0a;安装包仅包含 Windows 启动器与控制组件"/>
+        </Grid>
+      </Border>
+
+      <!-- Right content -->
+      <Border Grid.Column="1"
+              Background="#B3121A2B"
+              BorderBrush="{StaticResource LineBrush}"
+              BorderThickness="1"
+              CornerRadius="22"
+              Padding="32">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+
+          <Grid x:Name="ContentHost" Grid.Row="0">
+            <!-- Welcome -->
+            <StackPanel x:Name="PageWelcome" Visibility="Visible">
+              <TextBlock Text="欢迎安装 Android Simulator"
+                         FontSize="30"
+                         FontWeight="SemiBold"
+                         Margin="0,0,0,12"/>
+              <TextBlock Text="一键安装 Windows 启动器。安装后可启动后台 BlissOS，并通过独立窗口打开 Android 应用。"
+                         Foreground="{StaticResource MutedBrush}"
+                         FontSize="15"
+                         TextWrapping="Wrap"
+                         LineHeight="24"
+                         Margin="0,0,0,22"/>
+              <Border Background="{StaticResource PanelAltBrush}"
+                      BorderBrush="{StaticResource LineBrush}"
+                      BorderThickness="1"
+                      CornerRadius="16"
+                      Padding="18">
+                <StackPanel>
+                  <TextBlock Text="安装包含" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                  <TextBlock Text="• Android Simulator 启动器界面" Margin="0,0,0,6"/>
+                  <TextBlock Text="• simulatorctl 控制组件" Margin="0,0,0,6"/>
+                  <TextBlock Text="• 可选桌面与开始菜单快捷方式" Margin="0,0,0,6"/>
+                  <TextBlock Text="• 卸载入口（应用与功能）"
+                             Foreground="{StaticResource MutedBrush}"/>
+                </StackPanel>
+              </Border>
+              <TextBlock x:Name="PayloadStatusText"
+                         Margin="0,18,0,0"
+                         Foreground="{StaticResource MutedBrush}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <!-- Options -->
+            <StackPanel x:Name="PageOptions" Visibility="Collapsed">
+              <TextBlock Text="选择安装位置"
+                         FontSize="30"
+                         FontWeight="SemiBold"
+                         Margin="0,0,0,12"/>
+              <TextBlock Text="默认安装到当前用户目录，无需管理员权限。"
+                         Foreground="{StaticResource MutedBrush}"
+                         FontSize="14"
+                         Margin="0,0,0,18"/>
+
+              <TextBlock Text="安装路径" Margin="0,0,0,8" Foreground="{StaticResource MutedBrush}"/>
+              <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="InstallPathBox"
+                         Style="{StaticResource PathBox}"
+                         VerticalContentAlignment="Center"/>
+                <Button Grid.Column="1"
+                        Content="浏览…"
+                        Style="{StaticResource GhostButton}"
+                        Margin="10,0,0,0"
+                        Click="BrowseButton_Click"/>
+              </Grid>
+              <TextBlock x:Name="PathHintText"
+                         Foreground="{StaticResource MutedBrush}"
+                         FontSize="12"
+                         Margin="0,0,0,16"/>
+
+              <CheckBox x:Name="DesktopShortcutCheck"
+                        Style="{StaticResource OptionCheck}"
+                        Content="创建桌面快捷方式"
+                        IsChecked="True"/>
+              <CheckBox x:Name="StartMenuShortcutCheck"
+                        Style="{StaticResource OptionCheck}"
+                        Content="创建开始菜单快捷方式"
+                        IsChecked="True"/>
+              <CheckBox x:Name="LaunchAfterCheck"
+                        Style="{StaticResource OptionCheck}"
+                        Content="安装完成后启动 Android Simulator"
+                        IsChecked="True"/>
+            </StackPanel>
+
+            <!-- Progress -->
+            <StackPanel x:Name="PageProgress" Visibility="Collapsed" VerticalAlignment="Center">
+              <TextBlock x:Name="ProgressTitle"
+                         Text="正在安装…"
+                         FontSize="30"
+                         FontWeight="SemiBold"
+                         Margin="0,0,0,10"/>
+              <TextBlock x:Name="ProgressDetail"
+                         Text="准备中"
+                         Foreground="{StaticResource MutedBrush}"
+                         FontSize="14"
+                         TextWrapping="Wrap"
+                         Margin="0,0,0,22"/>
+
+              <Grid x:Name="ProgressTrack" Height="14" Margin="0,0,0,10">
+                <Border Background="#1A2438" CornerRadius="8"/>
+                <Border x:Name="ProgressFill"
+                        HorizontalAlignment="Stretch"
+                        CornerRadius="8"
+                        RenderTransformOrigin="0,0.5">
+                  <Border.RenderTransform>
+                    <ScaleTransform ScaleX="0"/>
+                  </Border.RenderTransform>
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                      <GradientStop Color="#FF8A3D" Offset="0"/>
+                      <GradientStop Color="#FFC27A" Offset="1"/>
+                    </LinearGradientBrush>
+                  </Border.Background>
+                </Border>
+              </Grid>
+              <Grid>
+                <TextBlock x:Name="ProgressPhaseText" Text="准备安装"/>
+                <TextBlock x:Name="ProgressPercentText"
+                           HorizontalAlignment="Right"
+                           Foreground="{StaticResource AccentBrush}"
+                           Text="0%"/>
+              </Grid>
+            </StackPanel>
+
+            <!-- Done -->
+            <StackPanel x:Name="PageDone" Visibility="Collapsed" VerticalAlignment="Center">
+              <Border Width="72" Height="72"
+                      CornerRadius="36"
+                      Background="#1A3DDC84"
+                      BorderBrush="{StaticResource SuccessBrush}"
+                      BorderThickness="1"
+                      HorizontalAlignment="Left"
+                      Margin="0,0,0,18">
+                <TextBlock Text="✓"
+                           FontSize="34"
+                           Foreground="{StaticResource SuccessBrush}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+              </Border>
+              <TextBlock x:Name="DoneTitle"
+                         Text="安装完成"
+                         FontSize="30"
+                         FontWeight="SemiBold"
+                         Margin="0,0,0,10"/>
+              <TextBlock x:Name="DoneDetail"
+                         Foreground="{StaticResource MutedBrush}"
+                         FontSize="15"
+                         TextWrapping="Wrap"
+                         LineHeight="24"/>
+            </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="1" Margin="0,24,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="BackButton"
+                    Content="上一步"
+                    Style="{StaticResource GhostButton}"
+                    HorizontalAlignment="Left"
+                    Click="BackButton_Click"
+                    Visibility="Collapsed"/>
+            <Button x:Name="CancelButton"
+                    Grid.Column="1"
+                    Content="取消"
+                    Style="{StaticResource GhostButton}"
+                    Margin="0,0,10,0"
+                    Click="CancelButton_Click"/>
+            <Button x:Name="NextButton"
+                    Grid.Column="2"
+                    Content="下一步"
+                    Style="{StaticResource AccentButton}"
+                    MinWidth="120"
+                    Click="NextButton_Click"/>
+          </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

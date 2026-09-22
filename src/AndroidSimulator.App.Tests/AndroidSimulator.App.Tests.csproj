@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <AssemblyName>AndroidSimulator.App.Tests</AssemblyName>
+    <RootNamespace>AndroidSimulator.App.Tests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <MSBuildEnableWorkloadResolver>false</MSBuildEnableWorkloadResolver>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\AndroidSimulator.App\Services\ApkActivationService.cs" Link="Services\ApkActivationService.cs" />
+    <Compile Include="..\AndroidSimulator.App\Services\AdaptiveTitleBarColor.cs" Link="Services\AdaptiveTitleBarColor.cs" />
+    <Compile Include="..\AndroidSimulator.App\Services\HostAppIcon.cs" Link="Services\HostAppIcon.cs" />
+    <Compile Include="..\AndroidSimulator.App\Services\WindowPlacement.cs" Link="Services\WindowPlacement.cs" />
+    <Compile Include="..\AndroidSimulator.App\Services\WarmHostActivationService.cs" Link="Services\WarmHostActivationService.cs" />
+    <Compile Include="..\AndroidSimulator.App\Services\SimulatorCtlPathResolver.cs" Link="Services\SimulatorCtlPathResolver.cs" />
+    <Compile Include="..\AndroidSimulator.App\Services\BackdropConfigurationGate.cs" Link="Services\BackdropConfigurationGate.cs" />
+  </ItemGroup>
+</Project>

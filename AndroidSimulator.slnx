@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AndroidSimulator.App/AndroidSimulator.App.csproj" />
+    <Project Path="src/AndroidSimulator.App.Tests/AndroidSimulator.App.Tests.csproj" />
+  </Folder>
+</Solution>

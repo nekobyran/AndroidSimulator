@@ -1,0 +1,615 @@
+--- a/app/src/events.h	2026-09-23 00:44:53.764550000 +0800
++++ b/app/src/events.h	2026-09-23 00:40:06.794575900 +0800
+@@ -10,6 +10,7 @@
+
+ enum {
+     SC_EVENT_NEW_FRAME = SDL_EVENT_USER,
++    SC_EVENT_INTERPOLATION_TICK,
+     SC_EVENT_OPEN_WINDOW,
+     SC_EVENT_DEVICE_DISCONNECTED,
+     SC_EVENT_SERVER_CONNECTION_FAILED,
+--- a/app/src/screen.h	2026-09-23 00:44:53.783261800 +0800
++++ b/app/src/screen.h	2026-09-23 00:44:26.037551400 +0800
+@@ -49,6 +49,7 @@
+     } bg;
+
+     struct sc_texture tex;
++    struct sc_texture interpolation_prev_tex;
+     struct sc_input_manager im;
+     struct sc_mouse_capture mc; // only used in mouse relative mode
+     struct sc_fps_counter fps_counter;
+@@ -94,6 +95,21 @@
+     struct sc_stream_session current_session;
+
+     AVFrame *frame;
++    AVFrame *interpolation_prev_frame;
++    bool interpolation_pair_ready;
++    sc_tick interpolation_pair_started;
++    sc_tick interpolation_source_period;
++    sc_tick interpolation_last_source_frame;
++    SDL_TimerID interpolation_timer;
++    uint32_t presentation_fps;
++    uint16_t supersampling_percent;
++    struct sc_size supersampling_last_logical;
++    struct sc_size supersampling_last_sampled;
++    bool frame_interpolation;
++    bool dynamic_frame_rate;
++    uint32_t dynamic_low_frame_rate;
++    bool window_focused;
++    sc_tick dynamic_last_render;
+
+     bool paused;
+     AVFrame *resume_frame;
+--- a/app/src/screen.c	2026-09-23 00:44:53.801576800 +0800
++++ b/app/src/screen.c	2026-09-23 00:44:26.635834100 +0800
+@@ -1,6 +1,7 @@
+ #include "screen.h"
+
+ #include <assert.h>
++#include <stdlib.h>
+ #include <string.h>
+ #include <SDL3/SDL.h>
+
+@@ -14,6 +15,64 @@
+
+ #define DOWNCAST(SINK) container_of(SINK, struct sc_screen, frame_sink)
+
++#define SC_ANDROID_SIMULATOR_MAX_SUPERSAMPLED_DIMENSION 3840
++
++static uint32_t
++sc_screen_read_env_u32(const char *name, uint32_t default_value,
++                       uint32_t min_value, uint32_t max_value) {
++    const char *value = getenv(name);
++    if (!value || !*value) {
++        return default_value;
++    }
++
++    char *end = NULL;
++    unsigned long parsed = strtoul(value, &end, 10);
++    if (!end || *end || parsed < min_value || parsed > max_value) {
++        LOGW("Ignore invalid %s=%s", name, value);
++        return default_value;
++    }
++
++    return (uint32_t) parsed;
++}
++
++static struct sc_size
++sc_screen_supersample_size(struct sc_screen *screen, struct sc_size logical) {
++    uint32_t percent = screen->supersampling_percent;
++    if (percent <= 100) {
++        return logical;
++    }
++
++    uint32_t width = ((uint32_t) logical.width * percent + 50) / 100;
++    uint32_t height = ((uint32_t) logical.height * percent + 50) / 100;
++    uint32_t longest = MAX(width, height);
++    if (longest > SC_ANDROID_SIMULATOR_MAX_SUPERSAMPLED_DIMENSION) {
++        width = width * SC_ANDROID_SIMULATOR_MAX_SUPERSAMPLED_DIMENSION / longest;
++        height = height * SC_ANDROID_SIMULATOR_MAX_SUPERSAMPLED_DIMENSION / longest;
++    }
++
++    width = MAX(2, width & ~1u);
++    height = MAX(2, height & ~1u);
++    return (struct sc_size) {(uint16_t) width, (uint16_t) height};
++}
++
++static struct sc_size
++sc_screen_logical_size(struct sc_screen *screen, struct sc_size sampled) {
++    uint32_t percent = screen->supersampling_percent;
++    if (screen->supersampling_last_sampled.width == sampled.width
++            && screen->supersampling_last_sampled.height == sampled.height
++            && screen->supersampling_last_logical.width
++            && screen->supersampling_last_logical.height) {
++        return screen->supersampling_last_logical;
++    }
++    if (percent <= 100) {
++        return sampled;
++    }
++
++    uint32_t width = MAX(2, ((uint32_t) sampled.width * 100 + percent / 2) / percent);
++    uint32_t height = MAX(2, ((uint32_t) sampled.height * 100 + percent / 2) / percent);
++    return (struct sc_size) {(uint16_t) width, (uint16_t) height};
++}
++
+ static void
+ set_aspect_ratio(struct sc_screen *screen, struct sc_size content_size) {
+     assert(content_size.width && content_size.height);
+@@ -231,13 +290,100 @@
+                          screen->render_fit, &screen->rect);
+ }
+
+-// render the texture to the renderer
+-//
+-// Set the update_content_rect flag if the window or content size may have
+-// changed, so that the content rectangle is recomputed
++static float
++sc_screen_interpolation_alpha(struct sc_screen *screen) {
++    if (!screen->frame_interpolation || !screen->interpolation_pair_ready
++            || screen->interpolation_source_period <= 0) {
++        return 1.f;
++    }
++
++    sc_tick elapsed = sc_tick_now() - screen->interpolation_pair_started;
++    if (elapsed <= 0) {
++        return 0.f;
++    }
++    if (elapsed >= screen->interpolation_source_period) {
++        return 1.f;
++    }
++    return (float) elapsed / screen->interpolation_source_period;
++}
++
++static bool
++sc_screen_render_texture(struct sc_screen *screen, SDL_Texture *texture,
++                         const SDL_FRect *geometry, float alpha) {
++    SDL_Renderer *renderer = screen->renderer;
++    bool blending = alpha < .999f;
++    if (!SDL_SetTextureBlendMode(texture,
++                                 blending ? SDL_BLENDMODE_BLEND
++                                          : SDL_BLENDMODE_NONE)) {
++        LOGE("Could not set texture blend mode: %s", SDL_GetError());
++        return false;
++    }
++    if (!SDL_SetTextureAlphaModFloat(texture, alpha)) {
++        LOGE("Could not set texture alpha: %s", SDL_GetError());
++        return false;
++    }
++
++    SDL_FRect target = *geometry;
++    enum sc_orientation orientation = screen->orientation;
++    bool ok;
++    if (orientation == SC_ORIENTATION_0) {
++        target.x = (int32_t) target.x;
++        target.y = (int32_t) target.y;
++        ok = SDL_RenderTexture(renderer, texture, NULL, &target);
++    } else {
++        unsigned cw_rotation = sc_orientation_get_rotation(orientation);
++        double angle = 90 * cw_rotation;
++        SDL_FRect rect;
++        SDL_FRect *dstrect;
++        if (sc_orientation_is_swap(orientation)) {
++            rect.x = target.x + (target.w - target.h) / 2.f;
++            rect.y = target.y + (target.h - target.w) / 2.f;
++            rect.w = target.h;
++            rect.h = target.w;
++            dstrect = &rect;
++        } else {
++            dstrect = &target;
++        }
++
++        SDL_FlipMode flip = sc_orientation_is_mirror(orientation)
++                              ? SDL_FLIP_HORIZONTAL : 0;
++        dstrect->x = (int32_t) dstrect->x;
++        dstrect->y = (int32_t) dstrect->y;
++        ok = SDL_RenderTextureRotated(renderer, texture, NULL, dstrect, angle,
++                                      NULL, flip);
++    }
++
++    if (!ok) {
++        LOGE("Could not render texture: %s", SDL_GetError());
++    }
++    return ok;
++}
++
++static bool
++sc_screen_should_render(struct sc_screen *screen) {
++    if (!screen->dynamic_frame_rate || screen->window_focused) {
++        return true;
++    }
++
++    sc_tick now = sc_tick_now();
++    sc_tick period = SC_TICK_FROM_SEC(1) / screen->dynamic_low_frame_rate;
++    if (screen->dynamic_last_render
++            && now - screen->dynamic_last_render < period) {
++        return false;
++    }
++    screen->dynamic_last_render = now;
++    return true;
++}
++
++// Render the decoded frame. When frame interpolation is enabled, the previous
++// and current textures are blended using the measured source-frame interval.
++// This generates temporal intermediate frames rather than duplicating frames.
+ static void
+ sc_screen_render(struct sc_screen *screen, bool update_content_rect) {
+     assert(screen->window_shown);
++    if (!sc_screen_should_render(screen)) {
++        return;
++    }
+
+     if (update_content_rect) {
+         sc_screen_update_content_rect(screen);
+@@ -255,8 +401,6 @@
+
+     float scale = SDL_GetWindowPixelDensity(screen->window);
+     if (scale == 0) {
+-        // Just in case, but in practice the function can only fail when window
+-        // is invalid
+         LOGE("Cannot get scale value: %s", SDL_GetError());
+         scale = 1;
+     }
+@@ -267,48 +411,36 @@
+         .w = screen->rect.w * scale,
+         .h = screen->rect.h * scale,
+     };
+-    enum sc_orientation orientation = screen->orientation;
+
+-    bool ok = false;
+-    if (orientation == SC_ORIENTATION_0) {
+-        // always align to a physical pixel
+-        geometry.x = (int32_t) geometry.x;
+-        geometry.y = (int32_t) geometry.y;
+-        ok = SDL_RenderTexture(renderer, texture, NULL, &geometry);
+-    } else {
+-        unsigned cw_rotation = sc_orientation_get_rotation(orientation);
+-        double angle = 90 * cw_rotation;
+-
+-        SDL_FRect *dstrect = NULL;
+-        SDL_FRect rect;
+-        if (sc_orientation_is_swap(orientation)) {
+-            rect.x = geometry.x + (geometry.w - geometry.h) / 2.f;
+-            rect.y = geometry.y + (geometry.h - geometry.w) / 2.f;
+-            rect.w = geometry.h;
+-            rect.h = geometry.w;
+-            dstrect = &rect;
+-        } else {
+-            dstrect = &geometry;
++    float alpha = sc_screen_interpolation_alpha(screen);
++    SDL_Texture *previous = screen->interpolation_pair_ready
++                          ? screen->interpolation_prev_tex.texture : NULL;
++    if (previous && alpha < 1.f) {
++        if (!sc_screen_render_texture(screen, previous, &geometry, 1.f)) {
++            goto end;
+         }
+-
+-        SDL_FlipMode flip = sc_orientation_is_mirror(orientation)
+-                              ? SDL_FLIP_HORIZONTAL : 0;
+-
+-        // always align to a physical pixel
+-        dstrect->x = (int32_t) dstrect->x;
+-        dstrect->y = (int32_t) dstrect->y;
+-        ok = SDL_RenderTextureRotated(renderer, texture, NULL, dstrect, angle,
+-                                      NULL, flip);
+-    }
+-
+-    if (!ok) {
+-        LOGE("Could not render texture: %s", SDL_GetError());
++        if (!sc_screen_render_texture(screen, texture, &geometry, alpha)) {
++            goto end;
++        }
++    } else {
++        sc_screen_render_texture(screen, texture, &geometry, 1.f);
+     }
+
+ end:
+     sc_sdl_render_present(renderer);
+ }
+
++static Uint64 SDLCALL
++sc_screen_interpolation_timer(void *userdata, SDL_TimerID timer_id,
++                              Uint64 interval) {
++    (void) timer_id;
++    struct sc_screen *screen = userdata;
++    if (!screen->frame_interpolation) {
++        return 0;
++    }
++    bool ok = sc_push_event(SC_EVENT_INTERPOLATION_TICK);
++    return ok ? interval : 0;
++}
+ static void
+ sc_screen_request_resize_display(struct sc_screen *screen, uint16_t width,
+                                  uint16_t height) {
+@@ -320,10 +452,16 @@
+         height = tmp;
+     }
+
+-    LOGV("resize_display(%" PRIu16 ", %" PRIu16 ")", width, height);
+-    sc_controller_resize_display(screen->controller, width, height);
++    struct sc_size logical = {width, height};
++    struct sc_size sampled = sc_screen_supersample_size(screen, logical);
++    screen->supersampling_last_logical = logical;
++    screen->supersampling_last_sampled = sampled;
++    LOGV("resize_display logical=%" PRIu16 "x%" PRIu16
++         " sampled=%" PRIu16 "x%" PRIu16,
++         logical.width, logical.height, sampled.width, sampled.height);
++    sc_controller_resize_display(screen->controller, sampled.width,
++                                 sampled.height);
+ }
+-
+ static void
+ sc_screen_on_resize(struct sc_screen *screen, const SDL_WindowEvent *event) {
+     // This event can be triggered before the window is shown
+@@ -498,6 +636,24 @@
+     screen->window_aspect_ratio_lock = params->window_aspect_ratio_lock;
+     screen->render_fit = params->render_fit;
+     screen->flex_display = params->flex_display;
++    screen->supersampling_percent = (uint16_t) sc_screen_read_env_u32(
++        "ANDROID_SIMULATOR_SUPER_RESOLUTION_SCALE_PERCENT", 100, 100, 200);
++    screen->presentation_fps = sc_screen_read_env_u32(
++        "ANDROID_SIMULATOR_PRESENTATION_FPS", 0, 0, 240);
++    screen->frame_interpolation = screen->presentation_fps > 60;
++    screen->dynamic_frame_rate = sc_screen_read_env_u32(
++        "ANDROID_SIMULATOR_DYNAMIC_FRAME_RATE", 0, 0, 1) != 0;
++    screen->dynamic_low_frame_rate = sc_screen_read_env_u32(
++        "ANDROID_SIMULATOR_DYNAMIC_LOW_FRAME_RATE", 15, 10, 60);
++    screen->window_focused = true;
++    screen->dynamic_last_render = 0;
++    screen->interpolation_pair_ready = false;
++    screen->interpolation_pair_started = 0;
++    screen->interpolation_source_period = SC_TICK_FROM_SEC(1) / 60;
++    screen->interpolation_last_source_frame = 0;
++    screen->interpolation_timer = 0;
++    screen->supersampling_last_logical = (struct sc_size) {0, 0};
++    screen->supersampling_last_sampled = (struct sc_size) {0, 0};
+
+     screen->bg.r = (params->background_color >> 16) & 0xFF;
+     screen->bg.g = (params->background_color >> 8) & 0xFF;
+@@ -585,6 +741,15 @@
+         goto error_destroy_window;
+     }
+
++    bool vertical_sync = sc_screen_read_env_u32(
++        "ANDROID_SIMULATOR_VSYNC", 1, 0, 1) != 0;
++    if (!SDL_SetRenderVSync(screen->renderer, vertical_sync ? 1 : 0)) {
++        LOGW("Could not set renderer VSync=%d: %s", vertical_sync, SDL_GetError());
++    } else {
++        LOGI("Android Simulator renderer VSync: %s",
++             vertical_sync ? "enabled" : "disabled");
++    }
++
+ #ifdef SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE
+     screen->gl_context = NULL;
+
+@@ -609,7 +774,7 @@
+     }
+ #endif
+
+-    bool mipmaps = params->video;
++    bool mipmaps = params->video && params->mipmaps;
+     ok = sc_texture_init(&screen->tex, screen->renderer, mipmaps);
+     if (!ok) {
+         goto error_destroy_renderer;
+@@ -654,6 +819,23 @@
+         goto error_destroy_texture;
+     }
+
++    screen->interpolation_prev_frame = NULL;
++    if (screen->frame_interpolation) {
++        ok = sc_texture_init(&screen->interpolation_prev_tex,
++                             screen->renderer, mipmaps);
++        if (!ok) {
++            LOGE("Could not initialize frame interpolation texture");
++            screen->frame_interpolation = false;
++        } else {
++            screen->interpolation_prev_frame = av_frame_alloc();
++            if (!screen->interpolation_prev_frame) {
++                LOG_OOM();
++                sc_texture_destroy(&screen->interpolation_prev_tex);
++                screen->frame_interpolation = false;
++            }
++        }
++    }
++
+     struct sc_input_manager_params im_params = {
+         .controller = params->controller,
+         .fp = params->fp,
+@@ -709,6 +891,29 @@
+         }
+     }
+
++    if (screen->frame_interpolation) {
++        Uint64 interval = 1000000000ULL / screen->presentation_fps;
++        screen->interpolation_timer = SDL_AddTimerNS(
++            interval, sc_screen_interpolation_timer, screen);
++        if (!screen->interpolation_timer) {
++            LOGE("Could not start frame interpolation timer: %s", SDL_GetError());
++            sc_texture_destroy(&screen->interpolation_prev_tex);
++            av_frame_free(&screen->interpolation_prev_frame);
++            screen->frame_interpolation = false;
++        } else {
++            LOGI("Android Simulator frame interpolation enabled: %" PRIu32
++                 " FPS presentation target", screen->presentation_fps);
++        }
++    }
++    if (screen->supersampling_percent > 100) {
++        LOGI("Android Simulator supersampling enabled: %" PRIu16 "%%",
++             screen->supersampling_percent);
++    }
++    if (screen->dynamic_frame_rate) {
++        LOGI("Android Simulator dynamic frame rate enabled: %" PRIu32
++             " FPS when unfocused", screen->dynamic_low_frame_rate);
++    }
++
+     return true;
+
+ error_destroy_texture:
+@@ -743,20 +948,20 @@
+         .y = y,
+     };
+
++    struct sc_size logical_content =
++        sc_screen_logical_size(screen, screen->content_size);
+     struct sc_size window_size =
+-        get_initial_optimal_size(screen->content_size, screen->req.width,
+-                                                       screen->req.height);
++        get_initial_optimal_size(logical_content, screen->req.width,
++                                                  screen->req.height);
+
+     if (screen->flex_display
+-            && window_size.width == screen->content_size.width
+-            && window_size.height == screen->content_size.height) {
+-        // Avoid sending an unnecessary initial "resize display" request to the
+-        // server if the size has not changed.
++            && window_size.width == logical_content.width
++            && window_size.height == logical_content.height) {
+         sc_screen_track_resize(screen, window_size);
+     }
+
+     assert(is_windowed(screen));
+-    set_aspect_ratio(screen, screen->content_size);
++    set_aspect_ratio(screen, logical_content);
+     sc_sdl_set_window_size(screen->window, window_size);
+     sc_sdl_set_window_position(screen->window, position);
+
+@@ -772,7 +977,6 @@
+     sc_sdl_show_window(screen->window);
+     sc_screen_update_content_rect(screen);
+ }
+-
+ void
+ sc_screen_hide_window(struct sc_screen *screen) {
+     sc_sdl_hide_window(screen->window);
+@@ -781,6 +985,12 @@
+
+ void
+ sc_screen_interrupt(struct sc_screen *screen) {
++    if (screen->interpolation_timer) {
++        SDL_RemoveTimer(screen->interpolation_timer);
++        screen->interpolation_timer = 0;
++    screen->supersampling_last_logical = (struct sc_size) {0, 0};
++    screen->supersampling_last_sampled = (struct sc_size) {0, 0};
++    }
+     sc_fps_counter_interrupt(&screen->fps_counter);
+ }
+
+@@ -807,6 +1017,16 @@
+     if (screen->disconnect_started) {
+         sc_disconnect_destroy(&screen->disconnect);
+     }
++    if (screen->interpolation_timer) {
++        SDL_RemoveTimer(screen->interpolation_timer);
++        screen->interpolation_timer = 0;
++    screen->supersampling_last_logical = (struct sc_size) {0, 0};
++    screen->supersampling_last_sampled = (struct sc_size) {0, 0};
++    }
++    if (screen->interpolation_prev_frame) {
++        sc_texture_destroy(&screen->interpolation_prev_tex);
++        av_frame_free(&screen->interpolation_prev_frame);
++    }
+     sc_texture_destroy(&screen->tex);
+     av_frame_free(&screen->frame);
+ #ifdef SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE
+@@ -930,21 +1150,47 @@
+
+     if (screen->frame_size.width != new_frame_size.width
+             || screen->frame_size.height != new_frame_size.height) {
+-
+-        // frame dimension changed
+         screen->frame_size = new_frame_size;
+
+         struct sc_size new_content_size =
+             get_oriented_size(new_frame_size, screen->orientation);
++        struct sc_size logical_content_size =
++            sc_screen_logical_size(screen, new_content_size);
+
+         if (screen->flex_display) {
+-            sc_screen_track_resize(screen, new_content_size);
++            sc_screen_track_resize(screen, logical_content_size);
+         }
+
+-        set_content_size(screen, new_content_size, can_resize);
++        bool resize_window = can_resize && screen->supersampling_percent == 100;
++        set_content_size(screen, new_content_size, resize_window);
+         sc_screen_update_content_rect(screen);
+     }
+
++    screen->interpolation_pair_ready = false;
++    if (screen->frame_interpolation && screen->interpolation_prev_frame
++            && screen->interpolation_prev_frame->width == frame->width
++            && screen->interpolation_prev_frame->height == frame->height) {
++        bool ok = sc_texture_set_from_frame(&screen->interpolation_prev_tex,
++                                            screen->interpolation_prev_frame);
++        if (!ok) {
++            return false;
++        }
++
++        sc_tick now = sc_tick_now();
++        if (screen->interpolation_last_source_frame) {
++            sc_tick measured = now - screen->interpolation_last_source_frame;
++            sc_tick min_period = SC_TICK_FROM_SEC(1) / 240;
++            sc_tick max_period = SC_TICK_FROM_SEC(1) / 15;
++            screen->interpolation_source_period =
++                CLAMP(measured, min_period, max_period);
++        }
++        screen->interpolation_last_source_frame = now;
++        screen->interpolation_pair_started = now;
++        screen->interpolation_pair_ready = true;
++    } else if (screen->frame_interpolation) {
++        screen->interpolation_last_source_frame = sc_tick_now();
++    }
++
+     bool ok = sc_texture_set_from_frame(&screen->tex, frame);
+     if (!ok) {
+         return false;
+@@ -974,15 +1220,22 @@
+         return true;
+     }
+
++    if (screen->frame_interpolation && screen->interpolation_prev_frame
++            && screen->frame->width > 0 && screen->frame->height > 0) {
++        av_frame_unref(screen->interpolation_prev_frame);
++        if (av_frame_ref(screen->interpolation_prev_frame, screen->frame) < 0) {
++            LOGE("Could not retain previous frame for interpolation");
++            return false;
++        }
++    }
++
+     av_frame_unref(screen->frame);
+     sc_mutex_lock(&screen->mutex);
+     sc_frame_buffer_consume(&screen->fb, screen->frame);
+-    // read with lock held
+     bool can_resize = !screen->prevent_auto_resize;
+     sc_mutex_unlock(&screen->mutex);
+     return sc_screen_apply_frame(screen, can_resize);
+ }
+-
+ void
+ sc_screen_set_paused(struct sc_screen *screen, bool paused) {
+     assert(screen->video);
+@@ -1159,6 +1412,22 @@
+             }
+             return;
+         }
++        case SC_EVENT_INTERPOLATION_TICK:
++            if (screen->frame_interpolation && screen->window_shown
++                    && !screen->paused && !screen->disconnected
++                    && screen->interpolation_pair_ready) {
++                sc_screen_render(screen, false);
++            }
++            return;
++        case SDL_EVENT_WINDOW_FOCUS_GAINED:
++            screen->window_focused = true;
++            screen->dynamic_last_render = 0;
++            sc_screen_render(screen, true);
++            return;
++        case SDL_EVENT_WINDOW_FOCUS_LOST:
++            screen->window_focused = false;
++            screen->dynamic_last_render = 0;
++            return;
+         case SDL_EVENT_WINDOW_EXPOSED:
+             sc_screen_render(screen, true);
+             return;
+@@ -1190,6 +1459,13 @@
+         case SC_EVENT_DEVICE_DISCONNECTED:
+             assert(!screen->disconnected);
+             screen->disconnected = true;
++            screen->interpolation_pair_ready = false;
++            if (screen->interpolation_timer) {
++                SDL_RemoveTimer(screen->interpolation_timer);
++                screen->interpolation_timer = 0;
++    screen->supersampling_last_logical = (struct sc_size) {0, 0};
++    screen->supersampling_last_sampled = (struct sc_size) {0, 0};
++            }
+             if (!screen->window_shown) {
+                 // No window open
+                 return;
+@@ -1259,6 +1535,8 @@
+                 sc_icon_destroy(icon_disconnected);
+                 break;
+             }
++            case SC_EVENT_INTERPOLATION_TICK:
++                break;
+             case SC_EVENT_DISCONNECTED_TIMEOUT:
+                 LOGD("Closing after device disconnection");
+                 return;
