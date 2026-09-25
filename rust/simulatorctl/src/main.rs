@@ -905,7 +905,10 @@ fn persist_runtime_profile_and_scheduler(
         fs::create_dir_all(parent)?;
     }
     let profile = default_runtime_profile(OWNED_INSTANCE, OWNED_IMAGE_ID, settings);
-    fs::write(&layout.profile_path, serde_json::to_string_pretty(&profile)?)?;
+    fs::write(
+        &layout.profile_path,
+        serde_json::to_string_pretty(&profile)?,
+    )?;
 
     let adb_path = layout
         .sdk_root
