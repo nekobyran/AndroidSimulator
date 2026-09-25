@@ -16,6 +16,10 @@ var tests = new (string Name, Action Body)[]
     ("Hosted app scale corrects a DPI-virtualized work area", TestHostedAppScaleCorrectsVirtualizedWorkArea),
     ("Hosted app default size is twenty percent larger", TestHostedAppDefaultSizeIsLarger),
     ("Hosted app viewport fills the physical client area", TestPhysicalHostViewportFillsClientArea),
+    ("Saved hosted app placement is clamped into the monitor work area", TestSavedPlacementClampsIntoWorkArea),
+    ("Scheduler keeps performance mode responsive in foreground", TestSchedulerForegroundPerformance),
+    ("Scheduler throttles background presentation work", TestSchedulerBackgroundPresentation),
+    ("Scheduler puts idle runtime work into EcoQoS", TestSchedulerIdle),
     ("Warm host channel is stable and package isolated", TestWarmHostChannelIsStableAndIsolated),
     ("Warm host activation still acknowledges and dispatches quickly", TestWarmHostActivationRoundTrip),
     ("Backdrop configuration rejects reentrant activation", TestBackdropConfigurationRejectsReentry),
@@ -245,6 +249,48 @@ static void TestPhysicalHostViewportFillsClientArea()
         new RectInt32(0, 40, 2560, 1400),
         WindowPlacement.CreatePhysicalHostViewport(2560, 1440, 32, 1.25),
         "Fullscreen physical viewport");
+}
+
+static void TestSavedPlacementClampsIntoWorkArea()
+{
+    var bounds = WindowPlacement.FitInWorkArea(
+        new RectInt32(0, 0, 1920, 1040),
+        new RectInt32(1800, 980, 900, 600));
+
+    AssertEqual(new RectInt32(1020, 440, 900, 600), bounds, "Clamped saved placement");
+}
+
+static void TestSchedulerForegroundPerformance()
+{
+    var decision = PerformanceSchedulerPolicy.Resolve(
+        "performance",
+        SchedulerProcessRole.Scrcpy,
+        SchedulerActivity.Foreground);
+
+    AssertEqual(ProcessPriorityClass.AboveNormal, decision.PriorityClass, "Foreground performance priority");
+    AssertFalse(decision.EcoQos, "Foreground performance must not use EcoQoS");
+}
+
+static void TestSchedulerBackgroundPresentation()
+{
+    var decision = PerformanceSchedulerPolicy.Resolve(
+        "performance",
+        SchedulerProcessRole.Scrcpy,
+        SchedulerActivity.Background);
+
+    AssertEqual(ProcessPriorityClass.Normal, decision.PriorityClass, "Background performance priority");
+    AssertTrue(decision.EcoQos, "Background scrcpy must use EcoQoS");
+}
+
+static void TestSchedulerIdle()
+{
+    var decision = PerformanceSchedulerPolicy.Resolve(
+        "balanced",
+        SchedulerProcessRole.Qemu,
+        SchedulerActivity.Idle);
+
+    AssertEqual(ProcessPriorityClass.BelowNormal, decision.PriorityClass, "Idle QEMU priority");
+    AssertTrue(decision.EcoQos, "Idle QEMU must use EcoQoS");
 }
 
 static void TestWarmHostChannelIsStableAndIsolated()

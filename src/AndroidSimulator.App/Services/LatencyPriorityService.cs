@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -21,61 +22,63 @@ internal static class LatencyPriorityService
     private const uint ProcessPowerThrottlingCurrentVersion = 1;
     private const uint ProcessPowerThrottlingExecutionSpeed = 1;
 
-    public static void PromoteCurrentProcess()
-    {
-        var processHandle = GetCurrentProcess();
-        if (processHandle == 0)
-        {
-            return;
-        }
+    private static readonly object AppliedStateGate = new();
+    private static readonly Dictionary<uint, SchedulerDecision> AppliedStates = [];
 
-        ApplyInteractiveState(processHandle, NormalPriorityClass);
+    public static void PromoteCurrentProcess() => SetCurrentProcessActivity(true);
+
+    public static void SetCurrentProcessActivity(bool foreground)
+    {
+        var decision = PerformanceSchedulerPolicy.Resolve(
+            ReadPerformanceMode(),
+            SchedulerProcessRole.Ui,
+            foreground ? SchedulerActivity.Foreground : SchedulerActivity.Background);
+        ApplyIfChanged((uint)Environment.ProcessId, GetCurrentProcess(), decision);
     }
 
-    public static void Refresh(uint scrcpyProcessId)
+    public static void Refresh(uint scrcpyProcessId, bool foreground = true)
     {
-        var activePriorityClass = ReadActivePriorityClass();
-        PromoteIfTrusted(scrcpyProcessId, TrustedAppWindowProcess.ExecutablePath, activePriorityClass);
+        var performanceMode = ReadPerformanceMode();
+        if (scrcpyProcessId != 0)
+        {
+            var scrcpyDecision = PerformanceSchedulerPolicy.Resolve(
+                performanceMode,
+                SchedulerProcessRole.Scrcpy,
+                foreground ? SchedulerActivity.Foreground : SchedulerActivity.Background);
+            ApplyIfTrusted(scrcpyProcessId, TrustedAppWindowProcess.ExecutablePath, scrcpyDecision);
+        }
 
         if (TryReadQemuPid(out var qemuProcessId))
         {
-            PromoteIfTrusted(qemuProcessId, QemuExecutablePath, activePriorityClass);
+            // QEMU is shared by all application windows. A background host must
+            // not demote the shared guest while another package may be active.
+            // The Rust control plane owns the transition to true Idle.
+            var qemuDecision = PerformanceSchedulerPolicy.Resolve(
+                performanceMode,
+                SchedulerProcessRole.Qemu,
+                SchedulerActivity.Foreground);
+            ApplyIfTrusted(qemuProcessId, QemuExecutablePath, qemuDecision);
         }
     }
 
-    private static uint ReadActivePriorityClass()
+    private static string ReadPerformanceMode()
     {
         if (!File.Exists(SettingsPath))
         {
-            return NormalPriorityClass;
+            return "balanced";
         }
 
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(SettingsPath));
-            if (!document.RootElement.TryGetProperty("performance_mode", out var mode))
-            {
-                return NormalPriorityClass;
-            }
-
-            return mode.GetString() switch
-            {
-                "eco" => BelowNormalPriorityClass,
-                "performance" => AboveNormalPriorityClass,
-                _ => NormalPriorityClass,
-            };
+            return document.RootElement.TryGetProperty("performance_mode", out var mode)
+                ? mode.GetString() ?? "balanced"
+                : "balanced";
         }
-        catch (JsonException)
+        catch (Exception exception) when (
+            exception is JsonException or IOException or UnauthorizedAccessException)
         {
-            return NormalPriorityClass;
-        }
-        catch (IOException)
-        {
-            return NormalPriorityClass;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return NormalPriorityClass;
+            return "balanced";
         }
     }
 
@@ -99,10 +102,10 @@ internal static class LatencyPriorityService
         }
     }
 
-    private static void PromoteIfTrusted(
+    private static void ApplyIfTrusted(
         uint processId,
         string expectedExecutablePath,
-        uint priorityClass)
+        SchedulerDecision decision)
     {
         if (!TrustedAppWindowProcess.IsExpectedProcessId(processId, expectedExecutablePath))
         {
@@ -120,7 +123,7 @@ internal static class LatencyPriorityService
 
         try
         {
-            ApplyInteractiveState(processHandle, priorityClass);
+            ApplyIfChanged(processId, processHandle, decision);
         }
         finally
         {
@@ -128,21 +131,52 @@ internal static class LatencyPriorityService
         }
     }
 
-    private static void ApplyInteractiveState(nint processHandle, uint priorityClass)
+    private static void ApplyIfChanged(
+        uint processId,
+        nint processHandle,
+        SchedulerDecision decision)
     {
-        _ = SetPriorityClass(processHandle, priorityClass);
+        lock (AppliedStateGate)
+        {
+            if (AppliedStates.TryGetValue(processId, out var applied) && applied == decision)
+            {
+                return;
+            }
+        }
+
+        if (!SetPriorityClass(processHandle, ToPriorityClass(decision.PriorityClass)))
+        {
+            return;
+        }
+
         var powerState = new ProcessPowerThrottlingState
         {
             Version = ProcessPowerThrottlingCurrentVersion,
             ControlMask = ProcessPowerThrottlingExecutionSpeed,
-            StateMask = 0,
+            StateMask = decision.EcoQos ? ProcessPowerThrottlingExecutionSpeed : 0,
         };
-        _ = SetProcessInformation(
+        if (!SetProcessInformation(
             processHandle,
             ProcessPowerThrottling,
             ref powerState,
-            (uint)Marshal.SizeOf<ProcessPowerThrottlingState>());
+            (uint)Marshal.SizeOf<ProcessPowerThrottlingState>()))
+        {
+            return;
+        }
+
+        lock (AppliedStateGate)
+        {
+            AppliedStates[processId] = decision;
+        }
     }
+
+    private static uint ToPriorityClass(ProcessPriorityClass priorityClass) =>
+        priorityClass switch
+        {
+            ProcessPriorityClass.AboveNormal => AboveNormalPriorityClass,
+            ProcessPriorityClass.BelowNormal => BelowNormalPriorityClass,
+            _ => NormalPriorityClass,
+        };
 
     [StructLayout(LayoutKind.Sequential)]
     private struct ProcessPowerThrottlingState

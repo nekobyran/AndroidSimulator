@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Diagnostics;
 using AndroidSimulator.App.Models;
 using AndroidSimulator.App.Services;
 using Microsoft.UI.Xaml;
@@ -54,8 +53,6 @@ public partial class App : Application
         try
         {
             LatencyPriorityService.PromoteCurrentProcess();
-            using var process = Process.GetCurrentProcess();
-            process.PriorityClass = ProcessPriorityClass.Normal;
         }
         catch
         {

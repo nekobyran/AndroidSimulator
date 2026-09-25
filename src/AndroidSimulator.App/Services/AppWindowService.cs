@@ -238,6 +238,18 @@ public sealed class AppWindowService
 
         // Keep scrcpy as an owned top-level window. WinUI composition is
         // always above foreign child HWNDs, which would otherwise be black.
+        // WinUI emits overlapping size/position notifications during a drag,
+        // so avoid a redundant SetWindowPos when the target is already exact.
+        if (!refreshFrame
+            && GetWindowRect(target.WindowHandle, out var currentBounds)
+            && currentBounds.Left == origin.X
+            && currentBounds.Top == origin.Y
+            && currentBounds.Right - currentBounds.Left == clientBounds.Width
+            && currentBounds.Bottom - currentBounds.Top == clientBounds.Height)
+        {
+            return true;
+        }
+
         var flags = SwpNoActivate;
         if (refreshFrame)
         {
@@ -829,6 +841,10 @@ public sealed class AppWindowService
         nint.Size == 8
             ? SetWindowLongPtr64(windowHandle, index, value)
             : new nint(SetWindowLong32(windowHandle, index, value.ToInt32()));
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint windowHandle, out NativeRect bounds);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

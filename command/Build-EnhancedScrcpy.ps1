@@ -7,6 +7,7 @@ $SdkRoot = 'D:\vibecoding\sdk'
 $MsysRoot = Join-Path $SdkRoot 'msys64'
 $Bash = Join-Path $MsysRoot 'usr\bin\bash.exe'
 $PatchFile = Join-Path $ProjectRoot 'native\scrcpy-enhanced\androidsimulator-scrcpy-4.1.patch'
+$PerformancePatchFile = Join-Path $ProjectRoot 'native\scrcpy-enhanced\androidsimulator-scrcpy-4.1-performance.patch'
 $CacheRoot = Join-Path $SdkRoot 'cache\android-simulator\scrcpy-enhanced'
 $Archive = Join-Path $CacheRoot 'scrcpy-v4.1-source.zip'
 $SessionRoot = Join-Path $CacheRoot ("work-{0}-{1}" -f $PID, [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
@@ -21,6 +22,9 @@ if (-not (Test-Path -LiteralPath $Bash -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $PatchFile -PathType Leaf)) {
     throw "Android Simulator scrcpy patch is missing: $PatchFile"
+}
+if (-not (Test-Path -LiteralPath $PerformancePatchFile -PathType Leaf)) {
+    throw "Android Simulator scrcpy performance patch is missing: $PerformancePatchFile"
 }
 
 New-Item -ItemType Directory -Force -Path $CacheRoot, $InstallRoot, $SessionRoot | Out-Null
@@ -37,10 +41,15 @@ Remove-Item -LiteralPath $ExtractRoot -Recurse -Force
 $sourceUnix = (& $Bash -lc "cygpath -u '$($SourceRoot.Replace("'", "'\''"))'").Trim()
 $buildUnix = (& $Bash -lc "cygpath -u '$($BuildRoot.Replace("'", "'\''"))'").Trim()
 $patchUnix = (& $Bash -lc "cygpath -u '$($PatchFile.Replace("'", "'\''"))'").Trim()
+$performancePatchUnix = (& $Bash -lc "cygpath -u '$($PerformancePatchFile.Replace("'", "'\''"))'").Trim()
 
 & $Bash -lc "export PATH=/mingw64/bin:/usr/bin; patch -d '$sourceUnix' -p1 < '$patchUnix'"
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to apply Android Simulator scrcpy enhancements: $LASTEXITCODE"
+}
+& $Bash -lc "export PATH=/mingw64/bin:/usr/bin; patch -d '$sourceUnix' -p1 < '$performancePatchUnix'"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to apply Android Simulator scrcpy performance patch: $LASTEXITCODE"
 }
 
 & $Bash -lc "export PATH=/mingw64/bin:/usr/bin; cd '$sourceUnix'; meson setup '$buildUnix' --buildtype=release -Dcompile_server=false -Dportable=true -Dusb=false && meson compile -C '$buildUnix'"
@@ -83,6 +92,6 @@ if (Test-Path -LiteralPath $OfficialRuntime -PathType Container) {
 [pscustomobject]@{
     version = '4.1'
     source = $SourceUrl
-    patch = $PatchFile
+    patches = @($PatchFile, $PerformancePatchFile)
     output = $Output
 } | ConvertTo-Json -Depth 3

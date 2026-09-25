@@ -1,0 +1,41 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Rust format
+        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+      - name: Rust tests
+        run: cargo test --manifest-path rust/Cargo.toml --workspace
+      - name: Rust clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+      - name: Windows contract tests
+        run: dotnet run --project src/AndroidSimulator.App.Tests/AndroidSimulator.App.Tests.csproj -c Release
+      - name: WinUI release build
+        run: dotnet build src/AndroidSimulator.App/AndroidSimulator.App.csproj -c Release -p:Platform=x64
+
+  scrcpy-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify enhanced scrcpy patch stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 -o scrcpy.zip https://github.com/Genymobile/scrcpy/archive/refs/tags/v4.1.zip
+          unzip -q scrcpy.zip
+          patch -d scrcpy-4.1 -p1 < native/scrcpy-enhanced/androidsimulator-scrcpy-4.1.patch
+          patch -d scrcpy-4.1 -p1 < native/scrcpy-enhanced/androidsimulator-scrcpy-4.1-performance.patch

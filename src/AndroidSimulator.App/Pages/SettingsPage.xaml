@@ -256,6 +256,30 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="3">
+                                <TextBlock FontWeight="SemiBold" Text="动态帧率" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="窗口失去焦点后降低呈现频率，前台恢复时立即回到目标帧率。" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="DynamicFrameRateToggle" Grid.Column="1" OffContent="关闭" OnContent="开启" Toggled="RuntimeSettingsToggle_Toggled" />
+                        </Grid>
+                        <Rectangle Height="1" Margin="16,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Grid MinHeight="76" Padding="16,10" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="160" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="3">
+                                <TextBlock FontWeight="SemiBold" Text="后台帧率" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="动态帧率开启时使用，范围 10–60 FPS；用于降低后台 GPU/CPU 唤醒。" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <NumberBox x:Name="DynamicLowFrameRateNumberBox" Grid.Column="1" Minimum="10" Maximum="60" SmallChange="5" SpinButtonPlacementMode="Inline" ValueChanged="RuntimeSettingsNumberBox_ValueChanged" />
+                        </Grid>
+                        <Rectangle Height="1" Margin="16,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Grid MinHeight="76" Padding="16,10" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="3">
                                 <TextBlock FontWeight="SemiBold" Text="超分辨率" />
                                 <TextBlock
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -368,7 +392,32 @@
                                 x:Name="SystemAudioToggle"
                                 Grid.Column="1"
                                 OffContent="静音"
-                                OnContent="启用" />
+                                OnContent="启用"
+                                Toggled="RuntimeSettingsToggle_Toggled" />
+                        </Grid>
+                        <Rectangle Height="1" Margin="16,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Grid MinHeight="76" Padding="16,10" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="3"><TextBlock FontWeight="SemiBold" Text="关闭窗口后保持应用" /><TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="关闭宿主时保留可信 scrcpy 与 Android 应用会话；下次打开同一应用可直接复用。" TextWrapping="Wrap" /></StackPanel>
+                            <ToggleSwitch x:Name="KeepAppAliveToggle" Grid.Column="1" OffContent="结束" OnContent="保持" Toggled="RuntimeSettingsToggle_Toggled" />
+                        </Grid>
+                        <Rectangle Height="1" Margin="16,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Grid MinHeight="76" Padding="16,10" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="3"><TextBlock FontWeight="SemiBold" Text="记住窗口位置" /><TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="按 Android package 保存窗口物理坐标与尺寸，并在跨 DPI/多显示器环境中约束到可见工作区。" TextWrapping="Wrap" /></StackPanel>
+                            <ToggleSwitch x:Name="RememberWindowPositionToggle" Grid.Column="1" OffContent="关闭" OnContent="开启" Toggled="RuntimeSettingsToggle_Toggled" />
+                        </Grid>
+                        <Rectangle Height="1" Margin="16,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Grid MinHeight="76" Padding="16,10" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="3"><TextBlock FontWeight="SemiBold" Text="自动旋转" /><TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="创建应用窗口前同步 Android accelerometer_rotation；关闭后仍可使用标题栏手动旋转。" TextWrapping="Wrap" /></StackPanel>
+                            <ToggleSwitch x:Name="AutoRotateToggle" Grid.Column="1" OffContent="锁定" OnContent="自动" Toggled="RuntimeSettingsToggle_Toggled" />
+                        </Grid>
+                        <Rectangle Height="1" Margin="16,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Grid MinHeight="76" Padding="16,10" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="3"><TextBlock FontWeight="SemiBold" Text="退出确认" /><TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="关闭主窗口前显示确认对话框，避免误关正在运行的 Android 应用。" TextWrapping="Wrap" /></StackPanel>
+                            <ToggleSwitch x:Name="QuitConfirmToggle" Grid.Column="1" OffContent="直接退出" OnContent="确认" Toggled="RuntimeSettingsToggle_Toggled" />
                         </Grid>
                         <Rectangle Height="1" Margin="16,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <Grid MinHeight="84" Padding="16,10" ColumnSpacing="20">

@@ -63,6 +63,11 @@ public sealed partial class MainWindow : Window
     private bool _isFullScreen;
     private bool _hostLayoutQueued;
     private bool _sessionTornDown;
+    private bool _isWindowActive = true;
+    private bool _quitConfirmed;
+    private bool _quitConfirmationPending;
+    private string? _restoredPlacementPackage;
+    private SimulatorRuntimeSettings _runtimeSettings = SimulatorRuntimeSettings.LoadFromDisk();
 
     public string BackdropDescription => _backdropMode switch
     {
@@ -183,6 +188,9 @@ public sealed partial class MainWindow : Window
         _hostedAppWindow = target;
         _isDirectLaunchPresentation = false;
         _sessionTornDown = false;
+        _runtimeSettings = SimulatorRuntimeSettings.LoadFromDisk();
+        ApplyWindowResizePolicy();
+        RestoreWindowPlacementIfEnabled(metadata.PackageName);
         App.AppWindows.RegisterHostFocusTarget(_windowHandle, metadata);
         AppTitleBar.Visibility = Visibility.Collapsed;
         ContentFrame.Visibility = Visibility.Collapsed;
@@ -256,14 +264,19 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
     {
-        App.EnsureInteractiveProcessPriority();
+        _isWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        LatencyPriorityService.SetCurrentProcessActivity(_isWindowActive);
+        if (_hostedAppMetadata is not null)
+        {
+            LatencyPriorityService.Refresh(_hostedAppMetadata.WindowProcessId, _isWindowActive);
+        }
+
         if (!_isDirectLaunchPresentation)
         {
             ConfigureBackdrop();
         }
         ConfigureTitleBar();
-        if (args.WindowActivationState != WindowActivationState.Deactivated
-            && _hostedAppWindow is not null)
+        if (_isWindowActive && _hostedAppWindow is not null)
         {
             TryRegisterFullScreenHotKey();
             // Initial frame and rotation events already schedule one edge sample.
@@ -344,7 +357,7 @@ public sealed partial class MainWindow : Window
     {
         if (args.DidPositionChange)
         {
-            ApplyHostLayoutNow(sampleTitleBar: false);
+            QueueHostLayout();
             QueueSettledHostLayout();
         }
     }
@@ -476,7 +489,7 @@ public sealed partial class MainWindow : Window
 
     private void AppHostViewport_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ApplyHostLayoutNow(sampleTitleBar: false);
+        QueueHostLayout();
         QueueSettledHostLayout();
     }
 
@@ -496,6 +509,7 @@ public sealed partial class MainWindow : Window
             _isFullScreen = false;
         }
 
+        ApplyWindowResizePolicy();
         QueueHostLayout();
         QueueSettledHostLayout();
     }
@@ -571,8 +585,12 @@ public sealed partial class MainWindow : Window
         StopHostHealthMonitor(permanently: true);
 
         var packageName = _hostedAppMetadata?.PackageName;
-        if (App.AppWindows.IsHostedWindowAttachedTo(_hostedAppWindow, _windowHandle)
-            || _hostedAppWindow is not null)
+        var keptWarm = !forceStopAndroid
+            && _runtimeSettings.KeepAppAlive
+            && App.AppWindows.TryReleaseHostedWindowToWarmCache(_hostedAppWindow);
+        if (!keptWarm
+            && (App.AppWindows.IsHostedWindowAttachedTo(_hostedAppWindow, _windowHandle)
+                || _hostedAppWindow is not null))
         {
             App.AppWindows.RequestCloseHostedWindow(_hostedAppWindow);
         }
@@ -609,15 +627,55 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
+    private async void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        // Close intent is final. Shut recovery/layout down before touching scrcpy
-        // so no queued callback can resurrect the session while Windows closes it.
+        _runtimeSettings = SimulatorRuntimeSettings.LoadFromDisk();
+        if (_runtimeSettings.QuitConfirm && !_quitConfirmed)
+        {
+            args.Cancel = true;
+            if (_quitConfirmationPending)
+            {
+                return;
+            }
+
+            _quitConfirmationPending = true;
+            try
+            {
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = RootGrid.XamlRoot,
+                    Title = "确认退出 Android Simulator？",
+                    Content = _runtimeSettings.KeepAppAlive
+                        ? "关闭窗口后会保留当前 Android 应用会话，之后可快速恢复。"
+                        : "关闭窗口会结束当前独立应用会话。",
+                    PrimaryButtonText = "退出",
+                    CloseButtonText = "取消",
+                    DefaultButton = ContentDialogButton.Close,
+                };
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                {
+                    _quitConfirmed = true;
+                    Close();
+                }
+            }
+            finally
+            {
+                _quitConfirmationPending = false;
+            }
+            return;
+        }
+
+        PrepareForClose();
+    }
+
+    private void PrepareForClose()
+    {
+        PersistWindowPlacementIfEnabled();
         _hostRecoveryGate.Close();
         StopSettledHostLayout();
         _hostRecoveryCancellation?.Cancel();
         _adaptiveTitleBarSampleCancellation?.Cancel();
-        TeardownHostedAppSession(forceStopAndroid: true);
+        TeardownHostedAppSession(forceStopAndroid: !_runtimeSettings.KeepAppAlive);
     }
 
     private void QueueHostLayout()
@@ -664,6 +722,7 @@ public sealed partial class MainWindow : Window
         {
             RootGrid.UpdateLayout();
             ApplyHostLayoutNow(sampleTitleBar: false);
+            PersistWindowPlacementIfEnabled();
         };
         return timer;
     }
@@ -672,6 +731,68 @@ public sealed partial class MainWindow : Window
     {
         _hostLayoutSettlementTimer?.Stop();
         _hostLayoutSettlementTimer = null;
+    }
+
+    internal void RefreshRuntimeSettingsPolicy()
+    {
+        _runtimeSettings = SimulatorRuntimeSettings.LoadFromDisk();
+        ApplyWindowResizePolicy();
+        LatencyPriorityService.SetCurrentProcessActivity(_isWindowActive);
+        if (_hostedAppMetadata is not null)
+        {
+            LatencyPriorityService.Refresh(_hostedAppMetadata.WindowProcessId, _isWindowActive);
+        }
+    }
+
+    private void ApplyWindowResizePolicy()
+    {
+        if (_hostedAppWindow is null || AppWindow.Presenter is not OverlappedPresenter presenter)
+        {
+            return;
+        }
+
+        var resizable = !_runtimeSettings.FixedWindowSize;
+        presenter.IsResizable = resizable;
+        presenter.IsMaximizable = resizable;
+    }
+
+    private void RestoreWindowPlacementIfEnabled(string packageName)
+    {
+        if (!_runtimeSettings.RememberWindowPosition
+            || string.Equals(_restoredPlacementPackage, packageName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _restoredPlacementPackage = packageName;
+        if (!WindowPlacementStore.TryLoad(packageName, out var savedBounds))
+        {
+            return;
+        }
+
+        if (TryGetNativeMonitorWorkAreaForBounds(savedBounds, out var workArea))
+        {
+            savedBounds = WindowPlacement.FitInWorkArea(workArea, savedBounds);
+        }
+
+        AppWindow.MoveAndResize(savedBounds);
+    }
+
+    private void PersistWindowPlacementIfEnabled()
+    {
+        if (!_runtimeSettings.RememberWindowPosition
+            || _isFullScreen
+            || _hostedAppMetadata is null
+            || AppWindow.Presenter.Kind != AppWindowPresenterKind.Overlapped)
+        {
+            return;
+        }
+
+        var position = AppWindow.Position;
+        var size = AppWindow.Size;
+        _ = WindowPlacementStore.TrySave(
+            _hostedAppMetadata.PackageName,
+            new RectInt32(position.X, position.Y, size.Width, size.Height));
     }
 
     private void ApplyHostLayoutNow(bool sampleTitleBar)
@@ -760,8 +881,28 @@ public sealed partial class MainWindow : Window
 
     private bool TryGetNativeMonitorWorkArea(out RectInt32 workArea)
     {
+        return TryGetNativeMonitorWorkArea(
+            MonitorFromWindow(_windowHandle, MonitorDefaultToNearest),
+            out workArea);
+    }
+
+    private bool TryGetNativeMonitorWorkAreaForBounds(RectInt32 bounds, out RectInt32 workArea)
+    {
+        var nativeBounds = new NativeRect
+        {
+            Left = bounds.X,
+            Top = bounds.Y,
+            Right = bounds.X + bounds.Width,
+            Bottom = bounds.Y + bounds.Height,
+        };
+        return TryGetNativeMonitorWorkArea(
+            MonitorFromRect(ref nativeBounds, MonitorDefaultToNearest),
+            out workArea);
+    }
+
+    private static bool TryGetNativeMonitorWorkArea(nint monitor, out RectInt32 workArea)
+    {
         workArea = default;
-        var monitor = MonitorFromWindow(_windowHandle, MonitorDefaultToNearest);
         if (monitor == 0)
         {
             return false;
@@ -986,7 +1127,7 @@ public sealed partial class MainWindow : Window
         var metadata = _hostedAppMetadata;
         if (metadata is not null)
         {
-            LatencyPriorityService.Refresh(metadata.WindowProcessId);
+            LatencyPriorityService.Refresh(metadata.WindowProcessId, _isWindowActive);
         }
         var isHealthy = target is not null
             && App.AppWindows.IsHostedWindowAttachedTo(target, _windowHandle);
@@ -1110,6 +1251,9 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern nint MonitorFromWindow(nint windowHandle, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromRect(ref NativeRect bounds, uint flags);
 
     [DllImport("shcore.dll")]
     private static extern int GetScaleFactorForMonitor(nint monitorHandle, out int scalePercent);

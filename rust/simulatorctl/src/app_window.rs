@@ -1700,13 +1700,18 @@ pub fn stop_app_session(
     Ok(report.with_window(scrcpy_pid, display_id))
 }
 
-pub fn has_live_app_windows(runtime_root: &Path, sdk_root: &Path, adb_path: &Path) -> Result<bool> {
+fn live_app_window_process_ids(
+    runtime_root: &Path,
+    sdk_root: &Path,
+    adb_path: &Path,
+) -> Result<Vec<u32>> {
     let layout = ScrcpyLayout::from_sdk_root(sdk_root)?;
     let app_windows_root = runtime_root.join("app-windows");
     if !app_windows_root.is_dir() {
-        return Ok(false);
+        return Ok(Vec::new());
     }
 
+    let mut process_ids = Vec::new();
     for entry in fs::read_dir(&app_windows_root)? {
         let entry = entry?;
         let path = entry.path();
@@ -1734,13 +1739,30 @@ pub fn has_live_app_windows(runtime_root: &Path, sdk_root: &Path, adb_path: &Pat
             continue;
         }
         match process_matches_exact_executable(metadata.window_pid, &layout.scrcpy_path) {
-            Ok(true) => return Ok(true),
+            Ok(true) => process_ids.push(metadata.window_pid),
             Ok(false) | Err(_) => {
                 let _ = fs::remove_file(path);
             }
         }
     }
-    Ok(false)
+    Ok(process_ids)
+}
+
+pub fn has_live_app_windows(runtime_root: &Path, sdk_root: &Path, adb_path: &Path) -> Result<bool> {
+    Ok(!live_app_window_process_ids(runtime_root, sdk_root, adb_path)?.is_empty())
+}
+
+pub fn refresh_live_app_window_priorities(
+    runtime_root: &Path,
+    sdk_root: &Path,
+    adb_path: &Path,
+    mode: runtime_settings::PerformanceMode,
+) -> Result<usize> {
+    let process_ids = live_app_window_process_ids(runtime_root, sdk_root, adb_path)?;
+    for process_id in &process_ids {
+        process_priority::promote_latency_sensitive_process(*process_id, mode)?;
+    }
+    Ok(process_ids.len())
 }
 
 fn find_live_window(

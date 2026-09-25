@@ -15,6 +15,7 @@
     <Compile Include="..\AndroidSimulator.App\Services\AdaptiveTitleBarColor.cs" Link="Services\AdaptiveTitleBarColor.cs" />
     <Compile Include="..\AndroidSimulator.App\Services\HostAppIcon.cs" Link="Services\HostAppIcon.cs" />
     <Compile Include="..\AndroidSimulator.App\Services\WindowPlacement.cs" Link="Services\WindowPlacement.cs" />
+    <Compile Include="..\AndroidSimulator.App\Services\PerformanceSchedulerPolicy.cs" Link="Services\PerformanceSchedulerPolicy.cs" />
     <Compile Include="..\AndroidSimulator.App\Services\WarmHostActivationService.cs" Link="Services\WarmHostActivationService.cs" />
     <Compile Include="..\AndroidSimulator.App\Services\SimulatorCtlPathResolver.cs" Link="Services\SimulatorCtlPathResolver.cs" />
     <Compile Include="..\AndroidSimulator.App\Services\BackdropConfigurationGate.cs" Link="Services\BackdropConfigurationGate.cs" />

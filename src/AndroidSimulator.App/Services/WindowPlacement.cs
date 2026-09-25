@@ -48,6 +48,21 @@ internal static class WindowPlacement
             height);
     }
 
+    public static RectInt32 FitInWorkArea(RectInt32 workArea, RectInt32 requestedBounds)
+    {
+        var workWidth = Math.Max(1, workArea.Width);
+        var workHeight = Math.Max(1, workArea.Height);
+        var width = Math.Min(Math.Max(1, requestedBounds.Width), workWidth);
+        var height = Math.Min(Math.Max(1, requestedBounds.Height), workHeight);
+        var maxX = workArea.X + workWidth - width;
+        var maxY = workArea.Y + workHeight - height;
+        return new RectInt32(
+            Math.Clamp(requestedBounds.X, workArea.X, maxX),
+            Math.Clamp(requestedBounds.Y, workArea.Y, maxY),
+            width,
+            height);
+    }
+
     public static RectInt32 CreatePhysicalHostViewport(
         int clientWidth,
         int clientHeight,

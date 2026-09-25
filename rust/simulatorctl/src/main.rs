@@ -885,7 +885,7 @@ fn update_simulator_settings(args: SettingsSetArgs) -> Result<runtime_settings::
         settings.quit_confirm = value;
     }
     runtime_settings::save(&runtime_root, &settings)?;
-    let _ = ensure_owned_runtime(OWNED_INSTANCE, OWNED_IMAGE_ID)?;
+    persist_runtime_profile_and_scheduler(&settings)?;
     Ok(settings)
 }
 
@@ -893,8 +893,44 @@ fn reset_simulator_settings() -> Result<runtime_settings::SimulatorSettings> {
     let runtime_root = simulator_settings_runtime_root()?;
     let settings = runtime_settings::SimulatorSettings::default();
     runtime_settings::save(&runtime_root, &settings)?;
-    let _ = ensure_owned_runtime(OWNED_INSTANCE, OWNED_IMAGE_ID)?;
+    persist_runtime_profile_and_scheduler(&settings)?;
     Ok(settings)
+}
+
+fn persist_runtime_profile_and_scheduler(
+    settings: &runtime_settings::SimulatorSettings,
+) -> Result<()> {
+    let layout = owned_layout(OWNED_INSTANCE, OWNED_IMAGE_ID)?;
+    if let Some(parent) = layout.profile_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let profile = default_runtime_profile(OWNED_INSTANCE, OWNED_IMAGE_ID, settings);
+    fs::write(&layout.profile_path, serde_json::to_string_pretty(&profile)?)?;
+
+    let adb_path = layout
+        .sdk_root
+        .join("android")
+        .join("platform-tools")
+        .join(exe("adb"));
+    let live_windows = if adb_path.is_file() {
+        app_window::refresh_live_app_window_priorities(
+            &layout.runtime_root,
+            &layout.sdk_root,
+            &adb_path,
+            settings.performance_mode,
+        )?
+    } else {
+        0
+    };
+
+    if let Some(pid) = running_owned_pid(&layout.pid_path, &layout.qemu_path)? {
+        if live_windows > 0 {
+            process_priority::promote_latency_sensitive_process(pid, settings.performance_mode)?;
+        } else {
+            process_priority::demote_idle_process(pid)?;
+        }
+    }
+    Ok(())
 }
 
 fn doctor() -> Result<DoctorReport> {

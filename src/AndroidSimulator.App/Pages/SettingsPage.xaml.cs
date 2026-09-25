@@ -88,12 +88,18 @@ public sealed partial class SettingsPage : Page
             CustomHeightNumberBox.Value = settings.CustomHeight;
             CustomDpiNumberBox.Value = settings.CustomDpi;
             MaxFrameRateNumberBox.Value = settings.MaxFrameRate;
+            DynamicFrameRateToggle.IsOn = settings.DynamicFrameRate;
+            DynamicLowFrameRateNumberBox.Value = settings.DynamicLowFrameRate;
             SuperResolutionToggle.IsOn = settings.SuperResolution;
             SuperResolutionScaleNumberBox.Value = settings.SuperResolutionScalePercent;
             FrameInterpolationToggle.IsOn = settings.FrameInterpolation;
             VerticalSyncToggle.IsOn = settings.VerticalSync;
             FixedWindowSizeToggle.IsOn = settings.FixedWindowSize;
             SystemAudioToggle.IsOn = settings.SystemAudio;
+            KeepAppAliveToggle.IsOn = settings.KeepAppAlive;
+            RememberWindowPositionToggle.IsOn = settings.RememberWindowPosition;
+            AutoRotateToggle.IsOn = settings.AutoRotate;
+            QuitConfirmToggle.IsOn = settings.QuitConfirm;
             UpdateRuntimeSettingsControlState();
         }
         finally
@@ -118,12 +124,18 @@ public sealed partial class SettingsPage : Page
             CustomHeight = ReadUInt(CustomHeightNumberBox, 360, 2160),
             CustomDpi = ReadUInt(CustomDpiNumberBox, 120, 640),
             MaxFrameRate = maxFrameRate,
+            DynamicFrameRate = DynamicFrameRateToggle.IsOn,
+            DynamicLowFrameRate = ReadUInt(DynamicLowFrameRateNumberBox, 10, 60),
             SuperResolution = SuperResolutionToggle.IsOn,
             SuperResolutionScalePercent = ReadUInt(SuperResolutionScaleNumberBox, 100, 200),
             FrameInterpolation = frameInterpolation,
             VerticalSync = VerticalSyncToggle.IsOn,
             FixedWindowSize = FixedWindowSizeToggle.IsOn,
             SystemAudio = SystemAudioToggle.IsOn,
+            KeepAppAlive = KeepAppAliveToggle.IsOn,
+            RememberWindowPosition = RememberWindowPositionToggle.IsOn,
+            AutoRotate = AutoRotateToggle.IsOn,
+            QuitConfirm = QuitConfirmToggle.IsOn,
         };
     }
 
@@ -159,11 +171,11 @@ public sealed partial class SettingsPage : Page
 
             _runtimeSettings = result.Data;
             ApplyRuntimeSettingsToUi(_runtimeSettings);
-            LatencyPriorityService.Refresh(0);
+            App.MainWindow?.RefreshRuntimeSettingsPolicy();
             ShowRuntimeSettingsMessage(
                 InfoBarSeverity.Success,
                 "设置已保存",
-                "调度策略立即刷新；QEMU CPU/内存会在下次冷启动使用，新建或重新打开的应用窗口会应用显示、超分、插帧与 VSync 设置。");
+                "调度、窗口锁定与退出策略立即刷新；QEMU CPU/内存会在下次冷启动使用，新建或复用的应用窗口会应用显示、动态帧率、超分、插帧、VSync 与自动旋转设置。");
         }
         catch (Exception exception)
         {
@@ -196,6 +208,7 @@ public sealed partial class SettingsPage : Page
 
             _runtimeSettings = result.Data;
             ApplyRuntimeSettingsToUi(_runtimeSettings);
+            App.MainWindow?.RefreshRuntimeSettingsPolicy();
             ShowRuntimeSettingsMessage(
                 InfoBarSeverity.Success,
                 "已恢复默认设置",
@@ -307,6 +320,7 @@ public sealed partial class SettingsPage : Page
         CustomDpiNumberBox.IsEnabled = customResolution;
 
         SuperResolutionScaleNumberBox.IsEnabled = SuperResolutionToggle.IsOn;
+        DynamicLowFrameRateNumberBox.IsEnabled = DynamicFrameRateToggle.IsOn;
         var highFrameRate = !double.IsNaN(MaxFrameRateNumberBox.Value)
             && MaxFrameRateNumberBox.Value > 60;
         FrameInterpolationToggle.IsEnabled = highFrameRate;

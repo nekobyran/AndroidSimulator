@@ -303,4 +303,42 @@ mod tests {
         };
         assert_eq!(settings.effective_max_size(), 2880);
     }
+
+    #[test]
+    fn all_persisted_runtime_settings_roundtrip() {
+        let root = std::env::temp_dir().join(format!(
+            "android-simulator-settings-roundtrip-{}",
+            std::process::id()
+        ));
+        let settings = SimulatorSettings {
+            performance_mode: PerformanceMode::Custom,
+            cpu_cores: 8,
+            memory_mb: 10240,
+            renderer_mode: RendererMode::Opengl,
+            graphics_strategy: GraphicsStrategy::Quality,
+            resolution_mode: ResolutionMode::Custom,
+            custom_width: 2304,
+            custom_height: 1296,
+            custom_dpi: 320,
+            max_frame_rate: 144,
+            dynamic_frame_rate: false,
+            dynamic_low_frame_rate: 24,
+            vertical_sync: false,
+            super_resolution: true,
+            super_resolution_scale_percent: 150,
+            frame_interpolation: true,
+            system_audio: true,
+            keep_app_alive: true,
+            remember_window_position: false,
+            fixed_window_size: true,
+            auto_rotate: false,
+            quit_confirm: true,
+            ..SimulatorSettings::default()
+        };
+
+        let _ = fs::remove_dir_all(&root);
+        save(&root, &settings).unwrap();
+        assert_eq!(load(&root).unwrap(), settings);
+        let _ = fs::remove_dir_all(&root);
+    }
 }

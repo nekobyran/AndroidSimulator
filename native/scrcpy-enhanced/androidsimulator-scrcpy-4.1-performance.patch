@@ -1,0 +1,22 @@
+--- a/app/src/screen.c
++++ b/app/src/screen.c
+@@ -441,8 +441,13 @@ sc_screen_interpolation_timer(void *userdata, SDL_TimerID timer_id,
+     if (!screen->frame_interpolation) {
+         return 0;
+     }
++    uint32_t target_fps = screen->presentation_fps;
++    if (screen->dynamic_frame_rate && !screen->window_focused) {
++        target_fps = MIN(target_fps, screen->dynamic_low_frame_rate);
++    }
++    Uint64 next_interval = 1000000000ULL / MAX(1, target_fps);
+     bool ok = sc_push_event(SC_EVENT_INTERPOLATION_TICK);
+-    return ok ? interval : 0;
++    return ok ? next_interval : 0;
+ }
+@@ -453,2 +458,6 @@ sc_screen_request_resize_display(struct sc_screen *screen, uint16_t width,
+     struct sc_size logical = {width, height};
++    if (screen->supersampling_last_logical.width == logical.width
++            && screen->supersampling_last_logical.height == logical.height) {
++        return;
++    }
+     struct sc_size sampled = sc_screen_supersample_size(screen, logical);
