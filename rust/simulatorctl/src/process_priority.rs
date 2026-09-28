@@ -218,7 +218,7 @@ mod windows_tests {
     use super::*;
     use std::sync::Mutex;
 
-    static PRIORITY_TEST_LOCK: Mutex<()> = Mutex::new();
+    static PRIORITY_TEST_LOCK: Mutex<()> = Mutex::new(());
     use windows_sys::Win32::{
         Foundation::CloseHandle,
         System::Threading::{
