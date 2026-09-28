@@ -8,7 +8,6 @@ const PRIORITY_NORMAL: u32 = 0x0000_0020;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SchedulerActivity {
     Foreground,
-    Background,
     Idle,
 }
 
@@ -23,18 +22,6 @@ fn performance_policy(mode: PerformanceMode, activity: SchedulerActivity) -> Per
         SchedulerActivity::Idle => PerformancePolicy {
             priority_class: PRIORITY_BELOW_NORMAL,
             eco_qos: true,
-        },
-        SchedulerActivity::Background => match mode {
-            PerformanceMode::Performance => PerformancePolicy {
-                priority_class: PRIORITY_NORMAL,
-                eco_qos: true,
-            },
-            PerformanceMode::Eco | PerformanceMode::Balanced | PerformanceMode::Custom => {
-                PerformancePolicy {
-                    priority_class: PRIORITY_BELOW_NORMAL,
-                    eco_qos: true,
-                }
-            }
         },
         SchedulerActivity::Foreground => match mode {
             PerformanceMode::Eco => PerformancePolicy {
@@ -56,11 +43,6 @@ fn performance_policy(mode: PerformanceMode, activity: SchedulerActivity) -> Per
 #[cfg(windows)]
 pub fn promote_latency_sensitive_process(pid: u32, mode: PerformanceMode) -> Result<()> {
     set_process_performance_state(pid, performance_policy(mode, SchedulerActivity::Foreground))
-}
-
-#[cfg(windows)]
-pub fn demote_background_process(pid: u32, mode: PerformanceMode) -> Result<()> {
-    set_process_performance_state(pid, performance_policy(mode, SchedulerActivity::Background))
 }
 
 #[cfg(windows)]
@@ -163,11 +145,6 @@ pub fn promote_latency_sensitive_process(_pid: u32, _mode: PerformanceMode) -> R
 }
 
 #[cfg(not(windows))]
-pub fn demote_background_process(_pid: u32, _mode: PerformanceMode) -> Result<()> {
-    Ok(())
-}
-
-#[cfg(not(windows))]
 pub fn demote_idle_process(_pid: u32) -> Result<()> {
     Ok(())
 }
@@ -177,19 +154,12 @@ mod policy_tests {
     use super::*;
 
     #[test]
-    fn scheduler_policy_distinguishes_foreground_background_and_idle() {
+    fn scheduler_policy_distinguishes_foreground_and_idle() {
         assert_eq!(
             performance_policy(PerformanceMode::Performance, SchedulerActivity::Foreground),
             PerformancePolicy {
                 priority_class: PRIORITY_ABOVE_NORMAL,
                 eco_qos: false,
-            }
-        );
-        assert_eq!(
-            performance_policy(PerformanceMode::Performance, SchedulerActivity::Background),
-            PerformancePolicy {
-                priority_class: PRIORITY_NORMAL,
-                eco_qos: true,
             }
         );
         assert_eq!(
