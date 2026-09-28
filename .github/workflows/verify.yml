@@ -19,6 +19,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Prepare centralized SDK test contract
+        shell: pwsh
+        run: |
+          $adb = 'D:\vibecoding\sdk\android\platform-tools\adb.exe'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $adb) | Out-Null
+          New-Item -ItemType File -Force -Path $adb | Out-Null
       - name: Rust format
         run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
       - name: Rust tests
