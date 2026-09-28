@@ -1,6 +1,10 @@
 --- a/app/src/screen.c
 +++ b/app/src/screen.c
-@@ -441,8 +441,13 @@ sc_screen_interpolation_timer(void *userdata, SDL_TimerID timer_id,
+@@ -441,10 +441,16 @@ sc_screen_interpolation_timer(void *userdata, SDL_TimerID timer_id,
+                               Uint64 interval) {
+     (void) timer_id;
++    (void) interval;
+     struct sc_screen *screen = userdata;
      if (!screen->frame_interpolation) {
          return 0;
      }
@@ -13,7 +17,8 @@
 -    return ok ? interval : 0;
 +    return ok ? next_interval : 0;
  }
-@@ -453,2 +458,6 @@ sc_screen_request_resize_display(struct sc_screen *screen, uint16_t width,
+ static void
+@@ -453,2 +459,6 @@ sc_screen_request_resize_display(struct sc_screen *screen, uint16_t width,
      struct sc_size logical = {width, height};
 +    if (screen->supersampling_last_logical.width == logical.width
 +            && screen->supersampling_last_logical.height == logical.height) {
