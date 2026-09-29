@@ -295,8 +295,14 @@ static void TestSchedulerIdle()
 
 static void TestWarmHostChannelIsStableAndIsolated()
 {
-    var first = WarmHostActivationService.GetPipeName("com.example.reader");
-    AssertEqual(first, WarmHostActivationService.GetPipeName("com.example.reader"), "Stable pipe name");
+    const string packageName = "com.example.reader";
+    var first = WarmHostActivationService.GetPipeName(packageName);
+    AssertEqual($"AndroidSimulator.WarmHost.{packageName}", first, "Package-derived pipe name");
+    AssertEqual(first, WarmHostActivationService.GetPipeName(packageName), "Stable pipe name");
+    AssertEqual(
+        $@"Local\AndroidSimulator.PackageHost.{packageName}",
+        PackageHostLease.GetMutexName(packageName),
+        "Package-derived mutex name");
     AssertFalse(
         first.Equals(
             WarmHostActivationService.GetPipeName("com.example.other"),

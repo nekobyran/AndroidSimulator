@@ -21,7 +21,7 @@ internal sealed class WarmHostActivationService : IDisposable
         _serverTask = RunServerAsync(_cancellation.Token);
     }
 
-        internal static string GetPipeName(string packageName)
+    internal static string GetPipeName(string packageName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
         return $"AndroidSimulator.WarmHost.{packageName.Trim()}";
@@ -138,7 +138,7 @@ internal sealed class PackageHostLease : IDisposable
         _ownerThreadId = Environment.CurrentManagedThreadId;
     }
 
-        internal static string GetMutexName(string packageName)
+    internal static string GetMutexName(string packageName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
         return $@"Local\AndroidSimulator.PackageHost.{packageName.Trim()}";
