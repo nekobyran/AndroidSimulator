@@ -92,7 +92,6 @@ function Ensure-ReleasePayload {
         payload_zip = $PayloadZip
         bytes = $zipInfo.Length
         mb = [math]::Round($zipInfo.Length / 1MB, 2)
-        sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $PayloadZip).Hash
     } | ConvertTo-Json -Depth 3
 }
 
@@ -135,12 +134,11 @@ function Invoke-BuildInstaller {
     Copy-Item -LiteralPath $setupExe -Destination $finalExe -Force
 
     # Keep a versioned copy for distribution history.
-    $versioned = Join-Path $InstallerOutDir 'AndroidSimulator-Setup-1.1.0-win-x64.exe'
+    $versioned = Join-Path $InstallerOutDir 'AndroidSimulator-Setup-1.1.1-win-x64.exe'
     Copy-Item -LiteralPath $setupExe -Destination $versioned -Force
 
     Remove-Item -LiteralPath $publishDir -Recurse -Force -ErrorAction SilentlyContinue
 
-    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $finalExe).Hash
     $size = (Get-Item -LiteralPath $finalExe).Length
     [pscustomobject]@{
         ok = $true
@@ -149,7 +147,6 @@ function Invoke-BuildInstaller {
         versioned = $versioned
         bytes = $size
         mb = [math]::Round($size / 1MB, 2)
-        sha256 = $hash
         payload_zip = $PayloadZip
     } | ConvertTo-Json -Depth 4
 }

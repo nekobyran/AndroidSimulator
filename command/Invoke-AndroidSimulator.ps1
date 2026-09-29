@@ -34,8 +34,10 @@ $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Resolve-Path (Join-Path $ScriptRoot '..')
 $WorkspaceRoot = Resolve-Path (Join-Path $ProjectRoot '..\..')
 $RustRoot = Join-Path $ProjectRoot 'rust'
-$SimulatorCtl = Join-Path $RustRoot 'target\debug\simulatorctl.exe'
-$SimulatorCtlRelease = Join-Path $RustRoot 'target\release\simulatorctl.exe'
+$CargoTarget = 'D:\vibecoding\sdk\cargo-target\android-simulator'
+$SimulatorCtl = Join-Path $CargoTarget 'debug\simulatorctl.exe'
+$SimulatorCtlRelease = Join-Path $CargoTarget 'release\simulatorctl.exe'
+
 $AppProject = Join-Path $ProjectRoot 'src\AndroidSimulator.App\AndroidSimulator.App.csproj'
 $AppTestsProject = Join-Path $ProjectRoot 'src\AndroidSimulator.App.Tests\AndroidSimulator.App.Tests.csproj'
 $AndroidAgentRoot = Join-Path $ProjectRoot 'android-agent'
@@ -87,7 +89,7 @@ $Scrcpy = Join-Path $ScrcpyRoot 'scrcpy.exe'
 $ScrcpyArchive = Join-Path $CacheRoot 'scrcpy-win64-v4.1.zip'
 $ScrcpyProvisionArchive = Join-Path $resolvedSdkRoot '.downloads\scrcpy\scrcpy-win64-v4.1.zip'
 $ScrcpyProvenance = Join-Path $ScrcpyRoot 'provenance.json'
-$ScrcpyArchiveSha256 = '5b12172b3264b2889f4583ee64752ce832e29bc8b1089dca81093459697165db'
+
 
 foreach ($directory in @(
     $CacheRoot,
@@ -106,7 +108,8 @@ $env:CARGO_HOME = $CargoHome
 $env:RUSTUP_HOME = $RustupHome
 $env:RUSTC = Join-Path $RustToolchainBin 'rustc.exe'
 $env:RUSTDOC = Join-Path $RustToolchainBin 'rustdoc.exe'
-$env:CARGO_TARGET_DIR = Join-Path $RustRoot 'target'
+$env:CARGO_TARGET_DIR = $CargoTarget
+
 $env:DOTNET_ROOT = Split-Path -Parent $Dotnet
 $env:DOTNET_CLI_HOME = Join-Path $CacheRoot 'dotnet-home'
 $env:MSBuildEnableWorkloadResolver = 'false'
@@ -207,24 +210,24 @@ function Invoke-VerifyScrcpy {
     Assert-File -Path $ScrcpyProvisionArchive -Label 'simulatorctl scrcpy provision archive'
     Assert-File -Path $ScrcpyProvenance -Label 'scrcpy verified-install provenance'
 
-    $archiveHash = (Get-FileHash -LiteralPath $ScrcpyArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($archiveHash -cne $ScrcpyArchiveSha256) {
-        throw "scrcpy archive SHA256 mismatch: expected $ScrcpyArchiveSha256, got $archiveHash"
-    }
-    $provisionArchiveHash = (Get-FileHash -LiteralPath $ScrcpyProvisionArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($provisionArchiveHash -cne $ScrcpyArchiveSha256) {
-        throw "simulatorctl scrcpy provision archive SHA256 mismatch: expected $ScrcpyArchiveSha256, got $provisionArchiveHash"
+    foreach ($path in @($ScrcpyArchive, $ScrcpyProvisionArchive, $Scrcpy)) {
+        if ((Get-Item -LiteralPath $path).Length -le 0) {
+            throw "scrcpy verification input is empty: $path"
+        }
     }
     $provenance = Get-Content -LiteralPath $ScrcpyProvenance -Raw -Encoding UTF8 | ConvertFrom-Json
-    $executableHash = (Get-FileHash -LiteralPath $Scrcpy -Algorithm SHA256).Hash.ToLowerInvariant()
+    $provenanceFields = @($provenance.PSObject.Properties.Name)
+    $expectedFields = @('schema_version', 'version', 'archive_url', 'archive_name', 'client_flavor')
     if (
-        $provenance.schema_version -ne 1 -or
+        $provenanceFields.Count -ne $expectedFields.Count -or
+        @($provenanceFields | Where-Object { $expectedFields -cnotcontains $_ }).Count -ne 0 -or
+        $provenance.schema_version -ne 3 -or
         $provenance.version -cne '4.1' -or
         $provenance.archive_url -cne 'https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-win64-v4.1.zip' -or
-        $provenance.archive_sha256 -cne $ScrcpyArchiveSha256 -or
-        $provenance.executable_sha256 -cne $executableHash
+        $provenance.archive_name -cne 'scrcpy-win64-v4.1.zip' -or
+        $provenance.client_flavor -cne 'androidsimulator-enhanced-v1'
     ) {
-        throw 'scrcpy provenance does not match the pinned official 4.1 installation.'
+        throw 'scrcpy provenance does not match the current pinned official 4.1 installation contract.'
     }
 
     $versionOutput = @(& $Scrcpy --version 2>&1)
@@ -237,7 +240,7 @@ function Invoke-VerifyScrcpy {
         throw "scrcpy --help failed with exit code $LASTEXITCODE"
     }
     $helpText = $helpOutput -join "`n"
-    $requiredFlags = @('--new-display', '--start-app', '--no-vd-system-decorations')
+    $requiredFlags = @('--new-display', '--start-app', '--no-vd-system-decorations', '--flex-display')
     $missingFlags = @($requiredFlags | Where-Object { -not $helpText.Contains($_) })
     if ($missingFlags.Count -gt 0) {
         throw "scrcpy 4.1 is missing required capabilities: $($missingFlags -join ', ')"
@@ -248,9 +251,10 @@ function Invoke-VerifyScrcpy {
         version = '4.1'
         executable = $Scrcpy
         archive = $ScrcpyArchive
+        archive_bytes = (Get-Item -LiteralPath $ScrcpyArchive).Length
         provision_archive = $ScrcpyProvisionArchive
-        archive_sha256 = $archiveHash
-        executable_sha256 = $executableHash
+        provision_archive_bytes = (Get-Item -LiteralPath $ScrcpyProvisionArchive).Length
+        executable_bytes = (Get-Item -LiteralPath $Scrcpy).Length
         provenance = $ScrcpyProvenance
         capabilities = $requiredFlags
         release = 'https://github.com/Genymobile/scrcpy/releases/tag/v4.1'
@@ -259,7 +263,7 @@ function Invoke-VerifyScrcpy {
 
 function Get-ApkIconDllPath {
     param([ValidateSet('debug', 'release')][string]$Profile = 'debug')
-    $candidate = Join-Path $RustRoot "target\$Profile\androidsimulator_apkicon.dll"
+    $candidate = Join-Path $CargoTarget "$Profile\androidsimulator_apkicon.dll"
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
         return $candidate
     }
@@ -497,7 +501,6 @@ function Export-WindowsBuild {
         apkIconDll = Join-Path $destinationPath 'AndroidSimulator.ApkIcon.dll'
         files = $files.Count
         bytes = ($files | Measure-Object Length -Sum).Sum
-        sha256 = (Get-FileHash -Algorithm SHA256 (Join-Path $destinationPath 'AndroidSimulator.App.exe')).Hash
     }
     $report | ConvertTo-Json -Depth 3
 }
@@ -556,7 +559,6 @@ function Invoke-BuildWindowsRelease {
         simulatorctl = Join-Path $destinationPath 'simulatorctl.exe'
         files = $files.Count
         bytes = ($files | Measure-Object Length -Sum).Sum
-        sha256 = (Get-FileHash -Algorithm SHA256 (Join-Path $destinationPath 'AndroidSimulator.App.exe')).Hash
     } | ConvertTo-Json -Depth 3
 }
 

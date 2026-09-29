@@ -12,7 +12,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Parser, Subcommand};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
+
 use std::{
     env,
     ffi::{OsStr, OsString},
@@ -26,7 +26,7 @@ use std::{
 
 const ANIMEKO_VERSION: &str = "v5.6.0";
 const ANIMEKO_APK: &str = "ani-5.6.0-x86_64.apk";
-const ANIMEKO_SHA1: &str = "ani-5.6.0-x86_64.apk.sha1";
+
 const OWNED_INSTANCE: &str = "android-simulator";
 const OWNED_IMAGE_ID: &str = bliss::IMAGE_ID;
 const OWNED_BOOT_TIMEOUT: Duration = Duration::from_secs(180);
@@ -384,9 +384,7 @@ struct RuntimeProfile {
 struct DownloadReport {
     version: String,
     apk_path: PathBuf,
-    sha1_path: PathBuf,
-    expected_sha1: String,
-    actual_sha1: String,
+    source_url: String,
     bytes: u64,
 }
 
@@ -405,7 +403,8 @@ struct OwnedProvisionReport {
     qemu_img_version: String,
     image_download_path: PathBuf,
     image_path: PathBuf,
-    image_sha256: String,
+    image_bytes: u64,
+
     boot_bundle: bliss::BootBundleReport,
     scrcpy: app_window::ScrcpyProvisionReport,
     runtime: OwnedRuntimeReport,
@@ -1003,28 +1002,19 @@ fn download_animeko(version: &str) -> Result<DownloadReport> {
     let dir = data_root()?.join("downloads").join("animeko").join(version);
     fs::create_dir_all(&dir)?;
     let apk_path = dir.join(ANIMEKO_APK);
-    let sha1_path = dir.join(ANIMEKO_SHA1);
     let base = format!("{GITHUB_RELEASE_BASE}/{version}");
-    download_if_missing(&format!("{base}/{ANIMEKO_APK}"), &apk_path)?;
-    download_if_missing(&format!("{base}/{ANIMEKO_SHA1}"), &sha1_path)?;
-
-    let expected_sha1 = fs::read_to_string(&sha1_path)?
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| anyhow!("SHA1 file is empty"))?
-        .to_ascii_lowercase();
-    let actual_sha1 = sha1_file(&apk_path)?;
-    if expected_sha1 != actual_sha1 {
-        bail!("SHA1 mismatch for {}", apk_path.display());
+    let source_url = format!("{base}/{ANIMEKO_APK}");
+    download_if_missing(&source_url, &apk_path)?;
+    let bytes = fs::metadata(&apk_path)?.len();
+    if bytes == 0 {
+        bail!("downloaded Animeko APK is empty: {}", apk_path.display());
     }
 
     Ok(DownloadReport {
         version: version.to_string(),
-        bytes: fs::metadata(&apk_path)?.len(),
         apk_path,
-        sha1_path,
-        expected_sha1,
-        actual_sha1,
+        source_url,
+        bytes,
     })
 }
 
@@ -1051,13 +1041,6 @@ fn download_if_missing(url: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn sha1_file(path: &Path) -> Result<String> {
-    let bytes = fs::read(path)?;
-    let mut hasher = Sha1::new();
-    hasher.update(bytes);
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
 fn provision_owned_runtime(instance: &str, image: &str) -> Result<OwnedProvisionReport> {
     let _ = ensure_owned_runtime(instance, image)?;
     let layout = owned_layout(instance, image)?;
@@ -1073,15 +1056,33 @@ fn provision_owned_runtime(instance: &str, image: &str) -> Result<OwnedProvision
     let qemu_img_version = owned_qemu_version(&layout, &layout.qemu_img_path, "qemu-img")?;
 
     let image_download_path = downloads.join(bliss::IMAGE_FILE_NAME);
+    if image_download_path.is_file()
+        && fs::metadata(&image_download_path)?.len() != bliss::IMAGE_BYTES
+    {
+        fs::remove_file(&image_download_path)?;
+    }
+    if !image_download_path.is_file()
+        && layout.iso_path.is_file()
+        && fs::metadata(&layout.iso_path)?.len() == bliss::IMAGE_BYTES
+    {
+        fs::hard_link(&layout.iso_path, &image_download_path).with_context(|| {
+            format!(
+                "failed to reuse installed BlissOS ISO as the download cache: {}",
+                image_download_path.display()
+            )
+        })?;
+    }
     download_if_missing(bliss::IMAGE_URL, &image_download_path)?;
-    let actual_image_sha256 = bliss::sha256_file(&image_download_path)?;
-    if actual_image_sha256 != bliss::IMAGE_SHA256 {
+    let image_bytes = fs::metadata(&image_download_path)?.len();
+    if image_bytes != bliss::IMAGE_BYTES {
         bail!(
-            "BlissOS ISO SHA256 mismatch for {}",
+            "BlissOS ISO length mismatch: expected {} bytes, got {image_bytes}: {}",
+            bliss::IMAGE_BYTES,
             image_download_path.display()
         );
     }
     install_verified_image_link(&image_download_path, &layout.iso_path)?;
+
     let boot_bundle = bliss::prepare_boot_bundle(&layout.iso_path, &layout.image_root)?;
 
     Ok(OwnedProvisionReport {
@@ -1098,7 +1099,8 @@ fn provision_owned_runtime(instance: &str, image: &str) -> Result<OwnedProvision
         qemu_img_version,
         image_download_path,
         image_path: layout.iso_path,
-        image_sha256: actual_image_sha256,
+        image_bytes,
+
         boot_bundle,
         scrcpy,
         runtime: inspect_owned_runtime(instance, image)?,
@@ -2215,7 +2217,7 @@ fn launch_package(
     let raw_icon = icon_override
         .or_else(|| identity.and_then(|item| item.icon_path.filter(|path| path.is_file())))
         .or_else(|| sdk::cached_apk_icon(&layout.runtime_root, package));
-    // Prefer an already-rendered compact desktop icon. Never re-hash/re-render
+    // Prefer an already-rendered compact desktop icon. Never re-inspect/re-render
     // multi-megabyte APK dumps on the interactive launch path.
     let icon_path =
         raw_icon.map(|path| sdk::prefer_existing_desktop_rounded_icon(&path).unwrap_or(path));

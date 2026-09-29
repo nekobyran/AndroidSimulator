@@ -16,14 +16,14 @@
 - OS: BlissOS Generic FOSS 16.9.7 / Android 13 / API 33
 - security patch: `2024-05-05`
 - official source: <https://sourceforge.net/projects/blissos-x86/files/Official/BlissOS16/FOSS/Generic/>
-- ISO SHA-256: `735cb962ec6bd92b62eb82a812831a38d79a0dfdf12b7973d2d0f7ab001ba68e`
+- ISO bytes: `2342518784`
 - ADB endpoint: `127.0.0.1:15555`
 - QEMU: `D:\vibecoding\sdk\msys64\ucrt64\bin\qemu-system-x86_64.exe` 11.0.2
 - scrcpy: `D:\vibecoding\sdk\scrcpy\scrcpy.exe` 4.1
 - runtime root: `D:\vibecoding\sdk\android-simulator-runtime`
 
-`runtime-image.json` 保存来源 URL、固定 SHA-256、OS/API/安全补丁、kernel/initrd 路径和变更说明。
-Provision 把已验证下载通过硬链接安装到 image 目录，并从 ISO 提取启动文件；没有未校验镜像 fallback。
+`runtime-image.json` 保存来源 URL、固定文件长度、OS/API/安全补丁、kernel/initrd 路径和变更说明。
+Provision 核对固定来源与文件长度后通过硬链接安装到 image 目录，并从 ISO 提取启动文件；没有其它镜像 fallback。
 
 ## 启动契约
 
@@ -82,7 +82,7 @@ WinUI 启动时按当前 EXE 路径修复 HKCU `.apk` 关联：
 
 同时注册当前用户 `AndroidSimulator.ApkIcon.dll`（`IPersistFile` + `IExtractIconW`）作为 `.apk`
 ProgID 的 per-file IconHandler。资源管理器为每个 APK 提取真实应用图标到
-`%runtime%/app-icons/shell/<sha16>.ico`；解析失败时回退 `DefaultIcon`（主程序图标），不崩溃
+`%runtime%/app-icons/shell/<package>-<bytes>-<modified>.ico`；解析失败时回退 `DefaultIcon`（主程序图标），不崩溃
 Explorer。`simulatorctl apk shell-icon --apk <path>` 可单独预热/校验该缓存。
 
 双击流程：校验路径 → 确保后台 Android/ADB ready → 安装 APK → 解析 package 与真实应用标签 → 创建虚拟显示 →

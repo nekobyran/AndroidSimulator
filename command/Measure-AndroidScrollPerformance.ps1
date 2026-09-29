@@ -170,14 +170,6 @@ function ConvertFrom-GfxInfo {
     }
 }
 
-function Get-Sha256 {
-    param([Parameter(Mandatory)][string]$Text)
-
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
-    $hash = [Security.Cryptography.SHA256]::HashData($bytes)
-    return [Convert]::ToHexString($hash).ToLowerInvariant()
-}
-
 function Get-Median {
     param([Parameter(Mandatory)][double[]]$Values)
 
@@ -244,7 +236,7 @@ $configuration = [pscustomobject][ordered]@{
 
 if ($DryRun) {
     $report = [pscustomobject][ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         status = 'dry-run'
         generatedAt = [DateTimeOffset]::Now.ToString('o')
         configuration = $configuration
@@ -293,7 +285,7 @@ for ($round = 1; $round -le $Rounds; $round++) {
         startedAt = $startedAt.ToString('o')
         completedAt = [DateTimeOffset]::Now.ToString('o')
         metrics = $metrics
-        rawGfxInfoSha256 = Get-Sha256 -Text $rawText
+        rawGfxInfoBytes = [Text.Encoding]::UTF8.GetByteCount($rawText)
         rawGfxInfoLineCount = $rawLines.Count
     }
 }
@@ -310,7 +302,7 @@ $aggregateMedian = [pscustomobject][ordered]@{
 }
 
 $report = [pscustomobject][ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     status = 'completed'
     generatedAt = [DateTimeOffset]::Now.ToString('o')
     configuration = $configuration

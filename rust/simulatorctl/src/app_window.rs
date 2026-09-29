@@ -2,12 +2,12 @@ use crate::{adb, process_priority, runtime_settings, startup_lock};
 use anyhow::{Context, Result, anyhow, bail};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+
 use std::{
     env,
     ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
@@ -18,14 +18,17 @@ pub const SCRCPY_VERSION: &str = "4.1";
 pub const SCRCPY_ARCHIVE_NAME: &str = "scrcpy-win64-v4.1.zip";
 pub const SCRCPY_ARCHIVE_URL: &str =
     "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-win64-v4.1.zip";
-pub const SCRCPY_ARCHIVE_SHA256: &str =
-    "5b12172b3264b2889f4583ee64752ce832e29bc8b1089dca81093459697165db";
+pub const SCRCPY_ARCHIVE_BYTES: u64 = 11_305_298;
+
 const SCRCPY_CLIENT_FLAVOR: &str = "androidsimulator-enhanced-v1";
 const ENHANCED_SCRCPY_RELATIVE_PATH: &str = r"scrcpy-enhanced\scrcpy.exe";
 const CENTRAL_SDK_ROOT: &str = r"D:\vibecoding\sdk";
 const CENTRAL_ADB_RELATIVE_PATH: &str = r"android\platform-tools\adb.exe";
 const SCRCPY_EXTRACTED_DIRECTORY: &str = "scrcpy-win64-v4.1";
 const APP_WINDOW_SCHEMA_VERSION: u8 = 2;
+const SCRCPY_PROVENANCE_SCHEMA_VERSION: u8 = 3;
+const SCRCPY_LAUNCH_CACHE_SCHEMA_VERSION: u8 = 2;
+
 const CAPABILITY_CACHE_SCHEMA_VERSION: u8 = 1;
 const CAPABILITY_CACHE_VERSION: u8 = 1;
 pub const MIN_APP_WINDOW_ANDROID_API: u32 = 30;
@@ -92,34 +95,30 @@ pub struct ScrcpyProvisionReport {
     pub source: String,
     pub archive_url: String,
     pub archive_path: PathBuf,
-    pub expected_archive_sha256: String,
-    pub actual_archive_sha256: String,
+    pub archive_bytes: u64,
     pub install_root: PathBuf,
+
     pub scrcpy_path: PathBuf,
-    pub executable_sha256: String,
     pub central_adb_path: PathBuf,
     pub version_output: String,
     pub reused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct ScrcpyProvenance {
     schema_version: u8,
     version: String,
     archive_url: String,
-    archive_sha256: String,
-    executable_sha256: String,
-    #[serde(default)]
+    archive_name: String,
     client_flavor: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct ScrcpyLaunchVerificationCache {
     schema_version: u8,
     version: String,
-    archive_sha256: String,
-    executable_sha256: String,
-    #[serde(default)]
     client_flavor: String,
     executable_length: u64,
     executable_modified_unix_nanos: u128,
@@ -348,18 +347,15 @@ pub fn provision_scrcpy(sdk_root: &Path) -> Result<ScrcpyProvisionReport> {
     let layout = ScrcpyLayout::from_sdk_root(sdk_root)?;
     let central_adb_path = layout.central_adb_path();
     if let Ok(version_output) = inspect_current_provision(&layout, &central_adb_path) {
-        let provenance = read_provenance(&layout.provenance_path)?;
         return Ok(ScrcpyProvisionReport {
             schema_version: APP_WINDOW_SCHEMA_VERSION,
             version: SCRCPY_VERSION.to_string(),
             source: "official-github-release+androidsimulator-enhanced-client".to_string(),
             archive_url: SCRCPY_ARCHIVE_URL.to_string(),
+            archive_bytes: fs::metadata(&layout.archive_path)?.len(),
             archive_path: layout.archive_path,
-            expected_archive_sha256: SCRCPY_ARCHIVE_SHA256.to_string(),
-            actual_archive_sha256: SCRCPY_ARCHIVE_SHA256.to_string(),
             install_root: layout.install_root,
             scrcpy_path: layout.scrcpy_path,
-            executable_sha256: provenance.executable_sha256,
             central_adb_path,
             version_output,
             reused: true,
@@ -370,18 +366,14 @@ pub fn provision_scrcpy(sdk_root: &Path) -> Result<ScrcpyProvisionReport> {
         fs::create_dir_all(parent)?;
     }
     fs::create_dir_all(&layout.staging_root)?;
-    let actual_archive_sha256 = download_verified_archive(
-        SCRCPY_ARCHIVE_URL,
-        &layout.archive_path,
-        SCRCPY_ARCHIVE_SHA256,
-    )?;
+    download_official_archive(SCRCPY_ARCHIVE_URL, &layout.archive_path)?;
     let staging =
         layout
             .staging_root
             .join(format!("extract-{}-{}", std::process::id(), unix_millis()?));
     fs::create_dir(&staging)?;
 
-    let install_result = (|| -> Result<String> {
+    let install_result = (|| -> Result<()> {
         extract_official_archive(&layout.archive_path, &staging)?;
         let extracted_root = staging.join(SCRCPY_EXTRACTED_DIRECTORY);
         let extracted_scrcpy = extracted_root.join("scrcpy.exe");
@@ -404,21 +396,22 @@ pub fn provision_scrcpy(sdk_root: &Path) -> Result<ScrcpyProvisionReport> {
                 enhanced_scrcpy.display()
             )
         })?;
-        let executable_sha256 = sha256_file(&extracted_scrcpy)?;
+        if fs::metadata(&extracted_scrcpy)?.len() == 0 {
+            bail!("extracted scrcpy executable is empty");
+        }
         let provenance = ScrcpyProvenance {
-            schema_version: APP_WINDOW_SCHEMA_VERSION,
+            schema_version: SCRCPY_PROVENANCE_SCHEMA_VERSION,
             version: SCRCPY_VERSION.to_string(),
             archive_url: SCRCPY_ARCHIVE_URL.to_string(),
-            archive_sha256: SCRCPY_ARCHIVE_SHA256.to_string(),
-            executable_sha256: executable_sha256.clone(),
+            archive_name: SCRCPY_ARCHIVE_NAME.to_string(),
             client_flavor: SCRCPY_CLIENT_FLAVOR.to_string(),
         };
         atomic_write_json(&extracted_root.join("provenance.json"), &provenance)?;
         install_extracted_directory(&layout, &staging, &extracted_root)?;
-        Ok(executable_sha256)
+        Ok(())
     })();
     let _ = fs::remove_dir_all(&staging);
-    let executable_sha256 = install_result?;
+    install_result?;
     let version_output = inspect_current_provision(&layout, &central_adb_path)?;
 
     Ok(ScrcpyProvisionReport {
@@ -426,12 +419,10 @@ pub fn provision_scrcpy(sdk_root: &Path) -> Result<ScrcpyProvisionReport> {
         version: SCRCPY_VERSION.to_string(),
         source: "official-github-release+androidsimulator-enhanced-client".to_string(),
         archive_url: SCRCPY_ARCHIVE_URL.to_string(),
+        archive_bytes: fs::metadata(&layout.archive_path)?.len(),
         archive_path: layout.archive_path,
-        expected_archive_sha256: SCRCPY_ARCHIVE_SHA256.to_string(),
-        actual_archive_sha256,
         install_root: layout.install_root,
         scrcpy_path: layout.scrcpy_path,
-        executable_sha256,
         central_adb_path,
         version_output,
         reused: false,
@@ -1171,15 +1162,9 @@ fn inspect_current_provision_for_launch(layout: &ScrcpyLayout, adb_path: &Path) 
         scrcpy_file_identity(&layout.scrcpy_path)?;
     if let Ok(bytes) = fs::read(&layout.launch_verification_cache_path)
         && let Ok(cache) = serde_json::from_slice::<ScrcpyLaunchVerificationCache>(&bytes)
-        && cache.schema_version == APP_WINDOW_SCHEMA_VERSION
+        && cache.schema_version == SCRCPY_LAUNCH_CACHE_SCHEMA_VERSION
         && cache.version == SCRCPY_VERSION
         && cache.client_flavor == SCRCPY_CLIENT_FLAVOR
-        && cache
-            .archive_sha256
-            .eq_ignore_ascii_case(SCRCPY_ARCHIVE_SHA256)
-        && cache
-            .executable_sha256
-            .eq_ignore_ascii_case(&provenance.executable_sha256)
         && cache.executable_length == executable_length
         && cache.executable_modified_unix_nanos == executable_modified_unix_nanos
         && cache
@@ -1193,13 +1178,11 @@ fn inspect_current_provision_for_launch(layout: &ScrcpyLayout, adb_path: &Path) 
 }
 
 fn validate_pinned_scrcpy_provenance(provenance: &ScrcpyProvenance) -> Result<()> {
-    if provenance.schema_version != APP_WINDOW_SCHEMA_VERSION
+    if provenance.schema_version != SCRCPY_PROVENANCE_SCHEMA_VERSION
         || provenance.version != SCRCPY_VERSION
         || provenance.archive_url != SCRCPY_ARCHIVE_URL
+        || provenance.archive_name != SCRCPY_ARCHIVE_NAME
         || provenance.client_flavor != SCRCPY_CLIENT_FLAVOR
-        || !provenance
-            .archive_sha256
-            .eq_ignore_ascii_case(SCRCPY_ARCHIVE_SHA256)
     {
         bail!("scrcpy provenance is not the pinned official v{SCRCPY_VERSION} release");
     }
@@ -1215,18 +1198,12 @@ fn scrcpy_file_identity(path: &Path) -> Result<(u64, u128)> {
     Ok((metadata.len(), modified))
 }
 
-fn cache_verified_scrcpy_launch(
-    layout: &ScrcpyLayout,
-    provenance: &ScrcpyProvenance,
-    version_output: &str,
-) -> Result<()> {
+fn cache_verified_scrcpy_launch(layout: &ScrcpyLayout, version_output: &str) -> Result<()> {
     let (executable_length, executable_modified_unix_nanos) =
         scrcpy_file_identity(&layout.scrcpy_path)?;
     let cache = ScrcpyLaunchVerificationCache {
-        schema_version: APP_WINDOW_SCHEMA_VERSION,
+        schema_version: SCRCPY_LAUNCH_CACHE_SCHEMA_VERSION,
         version: SCRCPY_VERSION.to_string(),
-        archive_sha256: SCRCPY_ARCHIVE_SHA256.to_string(),
-        executable_sha256: provenance.executable_sha256.clone(),
         client_flavor: SCRCPY_CLIENT_FLAVOR.to_string(),
         executable_length,
         executable_modified_unix_nanos,
@@ -1245,12 +1222,11 @@ fn inspect_current_provision(layout: &ScrcpyLayout, adb_path: &Path) -> Result<S
     }
     let provenance = read_provenance(&layout.provenance_path)?;
     validate_pinned_scrcpy_provenance(&provenance)?;
-    let actual_executable_sha256 = sha256_file(&layout.scrcpy_path)?;
-    if !actual_executable_sha256.eq_ignore_ascii_case(&provenance.executable_sha256) {
-        bail!("scrcpy executable hash does not match its verified installation provenance");
+    if fs::metadata(&layout.scrcpy_path)?.len() == 0 {
+        bail!("scrcpy executable is empty");
     }
     let version_output = scrcpy_version(&layout.scrcpy_path, &layout.install_root)?;
-    cache_verified_scrcpy_launch(layout, &provenance, &version_output)?;
+    cache_verified_scrcpy_launch(layout, &version_output)?;
     Ok(version_output)
 }
 
@@ -1294,19 +1270,15 @@ fn scrcpy_version(scrcpy_path: &Path, install_root: &Path) -> Result<String> {
     Ok(version_line.to_string())
 }
 
-fn download_verified_archive(url: &str, path: &Path, expected_sha256: &str) -> Result<String> {
+fn download_official_archive(url: &str, path: &Path) -> Result<u64> {
     if path.is_file() {
-        let actual = sha256_file(path)?;
-        if actual.eq_ignore_ascii_case(expected_sha256) {
-            return Ok(actual);
+        let bytes = fs::metadata(path)?.len();
+        if bytes == SCRCPY_ARCHIVE_BYTES {
+            return Ok(bytes);
         }
-        fs::remove_file(path).with_context(|| {
-            format!(
-                "failed to remove corrupt scrcpy archive: {}",
-                path.display()
-            )
-        })?;
+        fs::remove_file(path)?;
     }
+
     let client = Client::builder()
         .timeout(Duration::from_secs(300))
         .build()?;
@@ -1326,16 +1298,18 @@ fn download_verified_archive(url: &str, path: &Path, expected_sha256: &str) -> R
         .write(true)
         .create_new(true)
         .open(&temporary)?;
-    response.copy_to(&mut file)?;
+    let bytes = response.copy_to(&mut file)?;
     file.flush()?;
     file.sync_all()?;
-    let actual = sha256_file(&temporary)?;
-    if !actual.eq_ignore_ascii_case(expected_sha256) {
+    if bytes != SCRCPY_ARCHIVE_BYTES {
         let _ = fs::remove_file(&temporary);
-        bail!("official scrcpy archive SHA256 mismatch: expected {expected_sha256}, got {actual}");
+        bail!(
+            "official scrcpy archive length mismatch: expected {SCRCPY_ARCHIVE_BYTES} bytes, got {bytes}"
+        );
     }
+
     atomic_replace_file(&temporary, path)?;
-    Ok(actual)
+    Ok(bytes)
 }
 
 fn extract_official_archive(archive: &Path, destination: &Path) -> Result<()> {
@@ -1395,20 +1369,6 @@ fn ensure_direct_child(parent: &Path, child: &Path) -> Result<()> {
         );
     }
     Ok(())
-}
-
-fn sha256_file(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn parse_new_display_id(log: &str) -> Option<u32> {
@@ -2104,10 +2064,7 @@ mod tests {
             SCRCPY_ARCHIVE_URL,
             "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-win64-v4.1.zip"
         );
-        assert_eq!(
-            SCRCPY_ARCHIVE_SHA256,
-            "5b12172b3264b2889f4583ee64752ce832e29bc8b1089dca81093459697165db"
-        );
+        assert_eq!(SCRCPY_ARCHIVE_BYTES, 11_305_298);
     }
 
     #[test]

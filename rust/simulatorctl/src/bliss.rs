@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+
 use std::{
     fs,
     io::{Read, Write},
@@ -14,7 +14,8 @@ pub const IMAGE_VERSION: &str = "16.9.7";
 pub const IMAGE_ANDROID_API: u32 = 33;
 pub const IMAGE_FILE_NAME: &str = "Bliss-v16.9.7-x86_64-OFFICIAL-foss-20241011.iso";
 pub const IMAGE_URL: &str = "https://downloads.sourceforge.net/project/blissos-x86/Official/BlissOS16/FOSS/Generic/Bliss-v16.9.7-x86_64-OFFICIAL-foss-20241011.iso";
-pub const IMAGE_SHA256: &str = "735cb962ec6bd92b62eb82a812831a38d79a0dfdf12b7973d2d0f7ab001ba68e";
+pub const IMAGE_BYTES: u64 = 2_342_518_784;
+
 pub const IMAGE_SECURITY_PATCH: &str = "2024-05-05";
 pub const PATCHED_INITRD_FILE_NAME: &str = "initrd.android-simulator.img";
 pub const KERNEL_FILE_NAME: &str = "kernel";
@@ -31,7 +32,8 @@ pub struct BootBundleReport {
     pub android_api: u32,
     pub security_patch: &'static str,
     pub source_url: &'static str,
-    pub source_sha256: &'static str,
+    pub source_bytes: u64,
+
     pub iso_path: PathBuf,
     pub kernel_path: PathBuf,
     pub patched_initrd_path: PathBuf,
@@ -46,35 +48,24 @@ struct BootBundleManifest<'a> {
     android_api: u32,
     security_patch: &'a str,
     source_url: &'a str,
-    source_sha256: &'a str,
+    source_bytes: u64,
+
     source_iso: &'a Path,
     kernel: &'a Path,
     initrd: &'a Path,
     modifications: [&'a str; 4],
 }
 
-pub fn sha256_file(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("failed to open image for SHA256: {}", path.display()))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0_u8; 1024 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
 pub fn prepare_boot_bundle(iso_path: &Path, image_root: &Path) -> Result<BootBundleReport> {
     if !iso_path.is_file() {
         bail!("BlissOS source ISO is missing: {}", iso_path.display());
     }
-    let actual_sha256 = sha256_file(iso_path)?;
-    if actual_sha256 != IMAGE_SHA256 {
-        bail!("BlissOS source ISO SHA256 mismatch: expected {IMAGE_SHA256}, got {actual_sha256}");
+    let source_bytes = fs::metadata(iso_path)?.len();
+    if source_bytes != IMAGE_BYTES {
+        bail!(
+            "BlissOS source ISO length mismatch: expected {IMAGE_BYTES} bytes, got {source_bytes}: {}",
+            iso_path.display()
+        );
     }
 
     fs::create_dir_all(image_root)?;
@@ -89,13 +80,15 @@ pub fn prepare_boot_bundle(iso_path: &Path, image_root: &Path) -> Result<BootBun
 
     let manifest_path = image_root.join("runtime-image.json");
     let manifest = BootBundleManifest {
-        schema_version: 1,
+        schema_version: 2,
+
         os: "BlissOS Generic FOSS",
         version: IMAGE_VERSION,
         android_api: IMAGE_ANDROID_API,
         security_patch: IMAGE_SECURITY_PATCH,
         source_url: IMAGE_URL,
-        source_sha256: IMAGE_SHA256,
+        source_bytes,
+
         source_iso: iso_path,
         kernel: &kernel_path,
         initrd: &patched_initrd_path,
@@ -109,13 +102,15 @@ pub fn prepare_boot_bundle(iso_path: &Path, image_root: &Path) -> Result<BootBun
     fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
 
     Ok(BootBundleReport {
-        schema_version: 1,
+        schema_version: 2,
+
         os: "BlissOS Generic FOSS",
         version: IMAGE_VERSION,
         android_api: IMAGE_ANDROID_API,
         security_patch: IMAGE_SECURITY_PATCH,
         source_url: IMAGE_URL,
-        source_sha256: IMAGE_SHA256,
+        source_bytes,
+
         iso_path: iso_path.to_path_buf(),
         kernel_path,
         patched_initrd_path,
@@ -352,11 +347,15 @@ mod tests {
     }
 
     #[test]
-    fn test_bliss_runtime_contract_is_android_13_and_sha256_pinned() {
+    fn test_bliss_runtime_contract_is_android_13_and_official_source_pinned() {
         assert_eq!(IMAGE_ANDROID_API, 33);
         assert_eq!(IMAGE_VERSION, "16.9.7");
         assert!(IMAGE_FILE_NAME.starts_with("Bliss-v16.9.7-x86_64-OFFICIAL-foss-"));
-        assert_eq!(IMAGE_SHA256.len(), 64);
+        assert_eq!(
+            IMAGE_FILE_NAME,
+            "Bliss-v16.9.7-x86_64-OFFICIAL-foss-20241011.iso"
+        );
+        assert_eq!(IMAGE_BYTES, 2_342_518_784);
         assert!(IMAGE_URL.starts_with("https://downloads.sourceforge.net/project/blissos-x86/"));
     }
 

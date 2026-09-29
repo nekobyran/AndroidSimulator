@@ -1,5 +1,4 @@
 using System.IO.Pipes;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace AndroidSimulator.App.Services;
@@ -22,10 +21,10 @@ internal sealed class WarmHostActivationService : IDisposable
         _serverTask = RunServerAsync(_cancellation.Token);
     }
 
-    internal static string GetPipeName(string packageName)
+        internal static string GetPipeName(string packageName)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(packageName.Trim()));
-        return $"AndroidSimulator.WarmHost.{Convert.ToHexString(hash.AsSpan(0, 12))}";
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
+        return $"AndroidSimulator.WarmHost.{packageName.Trim()}";
     }
 
     public static bool TryActivateExisting(string packageName, int timeoutMilliseconds = 40)
@@ -139,11 +138,10 @@ internal sealed class PackageHostLease : IDisposable
         _ownerThreadId = Environment.CurrentManagedThreadId;
     }
 
-    internal static string GetMutexName(string packageName)
+        internal static string GetMutexName(string packageName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(packageName.Trim()));
-        return $@"Local\AndroidSimulator.PackageHost.{Convert.ToHexString(hash.AsSpan(0, 12))}";
+        return $@"Local\AndroidSimulator.PackageHost.{packageName.Trim()}";
     }
 
     public static bool TryAcquire(string packageName, out PackageHostLease? lease)

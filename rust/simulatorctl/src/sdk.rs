@@ -2,11 +2,9 @@ use crate::adb::validate_package_id;
 use anyhow::{Context, Result, anyhow, bail};
 use roxmltree::{Document, Node};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+
 use std::{
     env, fs,
-    fs::File,
-    io::Read,
     path::{Path, PathBuf},
     process::{Command, Output},
 };
@@ -183,8 +181,8 @@ pub fn cache_apk_icon(
 
     let icon_root = runtime_root.join("app-icons");
     fs::create_dir_all(&icon_root)?;
-    let apk_hash = sha256_file(apk_path)?;
-    let destination = icon_root.join(format!("{package}-{}.ico", &apk_hash[..16]));
+    let cache_identity = file_cache_identity(apk_path)?;
+    let destination = icon_root.join(format!("{package}-{cache_identity}.ico"));
     if destination.is_file() {
         return Ok(Some(destination));
     }
@@ -200,14 +198,14 @@ pub fn cache_apk_icon(
         &destination,
         &icon_root,
         package,
-        &apk_hash,
+        &cache_identity,
     )? {
         true => Ok(Some(destination)),
         false => Ok(None),
     }
 }
 
-/// Cache a per-APK Explorer icon keyed only by file content hash.
+/// Cache a per-APK Explorer icon keyed by package plus file metadata identity.
 ///
 /// Used by the shell IconHandler so each `.apk` shows its own application icon
 /// without requiring package metadata first.
@@ -217,14 +215,13 @@ pub fn cache_apk_shell_icon(apk_path: &Path, runtime_root: &Path) -> Result<Opti
     }
     let icon_root = runtime_root.join("app-icons").join("shell");
     fs::create_dir_all(&icon_root)?;
-    let apk_hash = sha256_file(apk_path)?;
-    let destination = icon_root.join(format!("{}.ico", &apk_hash[..16]));
+    let badging = aapt_badging(apk_path)?;
+    let package = parse_aapt_package_name(&badging).unwrap_or_else(|| "unknown".to_string());
+    let cache_identity = file_cache_identity(apk_path)?;
+    let destination = icon_root.join(format!("{package}-{cache_identity}.ico"));
     if destination.is_file() {
         return Ok(Some(destination));
     }
-
-    let badging = aapt_badging(apk_path)?;
-    let package = parse_aapt_package_name(&badging).unwrap_or_else(|| "unknown".to_string());
     let Some(icon_entry) = parse_aapt_application_icon(&badging) else {
         return Ok(None);
     };
@@ -237,7 +234,7 @@ pub fn cache_apk_shell_icon(apk_path: &Path, runtime_root: &Path) -> Result<Opti
         &destination,
         &icon_root,
         &package,
-        &apk_hash,
+        &cache_identity,
     )? {
         true => Ok(Some(destination)),
         false => Ok(None),
@@ -269,13 +266,13 @@ fn materialize_apk_icon_file(
     destination: &Path,
     icon_root: &Path,
     package: &str,
-    apk_hash: &str,
+    cache_identity: &str,
 ) -> Result<bool> {
     validate_apk_resource_path(icon_entry)?;
     let temporary_png = icon_root.join(format!(
         ".{package}-{}-{}.png",
         std::process::id(),
-        &apk_hash[..8]
+        cache_identity
     ));
     let result = (|| -> Result<bool> {
         let extension = Path::new(icon_entry)
@@ -346,7 +343,7 @@ pub fn cached_apk_icon(runtime_root: &Path, package: &str) -> Option<PathBuf> {
 }
 
 /// Prefer a previously cached compact desktop icon when the host needs a title-bar asset.
-/// This path never hashes or re-renders multi-megabyte APK dumps on the launch hot path.
+/// This path never re-reads or re-renders multi-megabyte APK dumps on the launch hot path.
 pub fn prefer_existing_desktop_rounded_icon(source_icon: &Path) -> Option<PathBuf> {
     if !source_icon.is_file() {
         return None;
@@ -391,8 +388,8 @@ pub fn cache_desktop_rounded_icon(source_icon: &Path, runtime_root: &Path) -> Re
 
     let icon_root = runtime_root.join("app-icons");
     fs::create_dir_all(&icon_root)?;
-    let source_hash = sha256_file(source_icon)?;
-    let destination = desktop_rounded_icon_destination(&icon_root, source_icon, &source_hash);
+    let cache_identity = file_cache_identity(source_icon)?;
+    let destination = desktop_rounded_icon_destination(&icon_root, source_icon, &cache_identity);
     if destination.is_file() {
         return Ok(destination);
     }
@@ -400,12 +397,12 @@ pub fn cache_desktop_rounded_icon(source_icon: &Path, runtime_root: &Path) -> Re
     let temporary_png = icon_root.join(format!(
         ".desktop-rounded-{}-{}.png",
         std::process::id(),
-        &source_hash[..8]
+        cache_identity
     ));
     let temporary_source_png = icon_root.join(format!(
         ".desktop-rounded-source-{}-{}.png",
         std::process::id(),
-        &source_hash[..8]
+        cache_identity
     ));
     let source_bytes = fs::read(source_icon)?;
     let extracted_png = largest_ico_png_payload(&source_bytes)?;
@@ -488,7 +485,7 @@ fn largest_ico_png_payload(bytes: &[u8]) -> Result<Option<&[u8]>> {
 fn desktop_rounded_icon_destination(
     icon_root: &Path,
     source_icon: &Path,
-    source_hash: &str,
+    cache_identity: &str,
 ) -> PathBuf {
     let source_stem = source_icon
         .file_stem()
@@ -496,8 +493,7 @@ fn desktop_rounded_icon_destination(
         .filter(|value| !value.is_empty())
         .unwrap_or("icon");
     icon_root.join(format!(
-        "{source_stem}-desktop-rounded-{}.ico",
-        &source_hash[..16]
+        "{source_stem}-desktop-rounded-{cache_identity}.ico"
     ))
 }
 
@@ -1012,18 +1008,13 @@ fn png_dimensions(png: &[u8]) -> Result<(u32, u32)> {
     Ok((width, height))
 }
 
-fn sha256_file(path: &Path) -> Result<String> {
-    let mut file = File::open(path)?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0u8; 128 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        digest.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
+fn file_cache_identity(path: &Path) -> Result<String> {
+    let metadata = fs::metadata(path)?;
+    let modified = metadata
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    Ok(format!("{}-{modified}", metadata.len()))
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -1354,17 +1345,17 @@ mod tests {
         let destination = desktop_rounded_icon_destination(
             Path::new(r"D:\runtime\app-icons"),
             Path::new(r"D:\source\Reader Icon.ico"),
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "4096-1234567890",
         );
 
         assert_eq!(
             destination,
-            PathBuf::from(r"D:\runtime\app-icons\Reader Icon-desktop-rounded-0123456789abcdef.ico")
+            PathBuf::from(r"D:\runtime\app-icons\Reader Icon-desktop-rounded-4096-1234567890.ico")
         );
     }
 
     #[test]
-    fn test_prefer_existing_desktop_rounded_icon_is_hashless_and_stable() {
+    fn test_prefer_existing_desktop_rounded_icon_is_stable() {
         let test_root = env::temp_dir().join(format!(
             "android-simulator-prefer-rounded-{}-{}",
             std::process::id(),

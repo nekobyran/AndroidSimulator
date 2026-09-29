@@ -218,14 +218,14 @@
             Title="需要下载 Android 系统镜像">
             <StackPanel Width="420" Spacing="12">
                 <TextBlock
-                    Text="未检测到已校验的 BlissOS 系统镜像。可一键下载并准备运行时（约 2 GB ISO，含校验与启动文件），或先打开官方镜像站确认文件。"
+                    Text="未检测到 BlissOS 系统镜像。可一键下载并准备运行时（约 2 GB ISO，核对固定来源与文件长度并准备启动文件），或先打开官方镜像站确认文件。"
                     TextWrapping="Wrap" />
                 <HyperlinkButton
                     Content="打开 BlissOS 官方镜像站"
                     NavigateUri="https://sourceforge.net/projects/blissos-x86/files/Official/BlissOS16/FOSS/Generic/" />
                 <TextBlock
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="镜像：BlissOS 16.9.7 FOSS · 固定 SHA-256 校验 · 同时准备 scrcpy 与 kernel/initrd"
+                    Text="镜像：BlissOS 16.9.7 FOSS · 固定来源与文件长度 · 同时准备 scrcpy 与 kernel/initrd"
                     TextWrapping="Wrap" />
             </StackPanel>
         </ContentDialog>

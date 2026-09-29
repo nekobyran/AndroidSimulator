@@ -10,7 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0"
-sha2 = "0.10"
+
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

@@ -4,9 +4,10 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <AssemblyName>AndroidSimulator.App</AssemblyName>
-    <Version>1.1.0</Version>
-    <FileVersion>1.1.0.0</FileVersion>
-    <InformationalVersion>1.1.0</InformationalVersion>
+    <Version>1.1.1</Version>
+    <FileVersion>1.1.1.0</FileVersion>
+    <InformationalVersion>1.1.1</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RootNamespace>AndroidSimulator.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <WindowsPackageType>None</WindowsPackageType>
@@ -39,41 +40,41 @@
     <Content Include="Assets\AndroidIcon.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
     <Content
-      Include="..\..\rust\target\debug\simulatorctl.exe"
+      Include="$(CARGO_TARGET_DIR)\debug\simulatorctl.exe"
       Link="simulatorctl.exe"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' == 'Debug' and Exists('..\..\rust\target\debug\simulatorctl.exe')" />
+      Condition="'$(Configuration)' == 'Debug' and Exists('$(CARGO_TARGET_DIR)\debug\simulatorctl.exe')" />
     <Content
-      Include="..\..\rust\target\release\androidsimulator-host.exe"
+      Include="$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe"
       Link="AndroidSimulator.Host.exe"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' == 'Debug' and Exists('..\..\rust\target\release\androidsimulator-host.exe')" />
+      Condition="'$(Configuration)' == 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe')" />
     <Content
-      Include="..\..\rust\target\release\simulatorctl.exe"
+      Include="$(CARGO_TARGET_DIR)\release\simulatorctl.exe"
       Link="simulatorctl.exe"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' != 'Debug' and Exists('..\..\rust\target\release\simulatorctl.exe')" />
+      Condition="'$(Configuration)' != 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\simulatorctl.exe')" />
     <Content
-      Include="..\..\rust\target\release\androidsimulator-host.exe"
+      Include="$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe"
       Link="AndroidSimulator.Host.exe"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' != 'Debug' and Exists('..\..\rust\target\release\androidsimulator-host.exe')" />
+      Condition="'$(Configuration)' != 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe')" />
     <Content
-      Include="..\..\rust\target\debug\androidsimulator_apkicon.dll"
+      Include="$(CARGO_TARGET_DIR)\debug\androidsimulator_apkicon.dll"
       Link="AndroidSimulator.ApkIcon.dll"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' == 'Debug' and Exists('..\..\rust\target\debug\androidsimulator_apkicon.dll')" />
+      Condition="'$(Configuration)' == 'Debug' and Exists('$(CARGO_TARGET_DIR)\debug\androidsimulator_apkicon.dll')" />
     <Content
-      Include="..\..\rust\target\release\androidsimulator_apkicon.dll"
+      Include="$(CARGO_TARGET_DIR)\release\androidsimulator_apkicon.dll"
       Link="AndroidSimulator.ApkIcon.dll"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' != 'Debug' and Exists('..\..\rust\target\release\androidsimulator_apkicon.dll')" />
+      Condition="'$(Configuration)' != 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\androidsimulator_apkicon.dll')" />
   </ItemGroup>
 
   <ItemGroup>

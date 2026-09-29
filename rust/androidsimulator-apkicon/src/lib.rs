@@ -1,10 +1,8 @@
 #![cfg(windows)]
 #![allow(non_snake_case, clippy::missing_safety_doc)]
 
-use sha2::{Digest, Sha256};
 use std::{
     env, fs,
-    io::Read,
     path::{Path, PathBuf},
     process::Command,
     sync::atomic::{AtomicI32, AtomicUsize, Ordering},
@@ -458,8 +456,10 @@ fn ensure_icon(apk_path: &Path) -> Option<PathBuf> {
     let runtime_root = runtime_root()?;
     let icon_root = runtime_root.join("app-icons").join("shell");
     let _ = fs::create_dir_all(&icon_root);
-    let hash = sha256_file(apk_path).ok()?;
-    let destination = icon_root.join(format!("{}.ico", &hash[..16]));
+    let badging = aapt_badging(apk_path)?;
+    let package = parse_package_name(&badging).unwrap_or_else(|| "unknown".to_string());
+    let cache_identity = file_cache_identity(apk_path).ok()?;
+    let destination = icon_root.join(format!("{package}-{cache_identity}.ico"));
     if destination.is_file() {
         return Some(destination);
     }
@@ -470,7 +470,6 @@ fn ensure_icon(apk_path: &Path) -> Option<PathBuf> {
         }
     }
 
-    let badging = aapt_badging(apk_path)?;
     let icon_entry = parse_application_icon(&badging)?;
     let extension = Path::new(&icon_entry)
         .extension()
@@ -576,6 +575,13 @@ fn latest_build_tool(name: &str) -> Option<PathBuf> {
         .collect::<Vec<_>>();
     candidates.sort();
     candidates.pop()
+}
+
+fn parse_package_name(output: &str) -> Option<String> {
+    output.lines().map(str::trim).find_map(|line| {
+        let rest = line.strip_prefix("package: name='")?;
+        rest.split_once('\'').map(|item| item.0.to_string())
+    })
 }
 
 fn parse_application_icon(output: &str) -> Option<String> {
@@ -715,18 +721,13 @@ fn png_to_ico_bytes(png: &[u8]) -> Option<Vec<u8>> {
     Some(ico)
 }
 
-fn sha256_file(path: &Path) -> anyhow::Result<String> {
-    let mut file = fs::File::open(path)?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0u8; 128 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        digest.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
+fn file_cache_identity(path: &Path) -> anyhow::Result<String> {
+    let metadata = fs::metadata(path)?;
+    let modified = metadata
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    Ok(format!("{}-{modified}", metadata.len()))
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {

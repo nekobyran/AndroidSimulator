@@ -28,12 +28,10 @@ Windows 窗口；不会显示、嵌入或伪装 Android 整机窗口。
 
 - OS：BlissOS Generic FOSS 16.9.7，Android 13 / API 33，安全补丁 `2024-05-05`。
 - 官方项目：<https://sourceforge.net/projects/blissos-x86/>
-- ISO：`Bliss-v16.9.7-x86_64-OFFICIAL-foss-20241011.iso`
-- SHA-256：`735cb962ec6bd92b62eb82a812831a38d79a0dfdf12b7973d2d0f7ab001ba68e`
-- scrcpy：Genymobile 官方 4.1，资产 SHA-256
-  `5b12172b3264b2889f4583ee64752ce832e29bc8b1089dca81093459697165db`。
+- ISO：`Bliss-v16.9.7-x86_64-OFFICIAL-foss-20241011.iso`，固定来源与文件长度 `2342518784` bytes。
+- scrcpy：Genymobile 官方 4.1，固定来源与归档长度 `11305298` bytes。
 
-Provision 会先验证 ISO，再提取 kernel/initrd、生成可追溯的 Android Simulator initrd，并写入
+Provision 会先核对固定来源与文件长度，再提取 kernel/initrd、生成可追溯的 Android Simulator initrd，并写入
 `runtime-image.json`。下载文件与 image 目录通过同卷硬链接共享物理数据，不重复占用约 2 GB。
 
 ## 架构
