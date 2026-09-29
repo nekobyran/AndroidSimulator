@@ -50,7 +50,7 @@ jobs:
           patch -d scrcpy-4.1 -p1 < native/scrcpy-enhanced/androidsimulator-scrcpy-4.1-performance.patch
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [windows, scrcpy-patches]
     runs-on: windows-latest
     steps:
@@ -85,8 +85,8 @@ jobs:
           name: AndroidSimulator-Setup
           path: AndroidSimulator-Setup.exe
           if-no-files-found: error
-      - name: Update formal v1.1.0 release
+      - name: Update formal v1.1.1 release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload v1.1.0 AndroidSimulator-Setup.exe --clobber
+        run: gh release upload v1.1.1 AndroidSimulator-Setup.exe --clobber
