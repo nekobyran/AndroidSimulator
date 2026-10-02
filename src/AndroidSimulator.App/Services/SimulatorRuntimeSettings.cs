@@ -94,24 +94,4 @@ internal sealed record SimulatorRuntimeSettings
         => JsonSerializer.Deserialize<SimulatorRuntimeSettings>(element.GetRawText())
             ?? throw new JsonException("simulatorctl returned an empty settings payload.");
 
-    public uint EffectiveCpuCores => PerformanceMode switch
-    {
-        "eco" => 2,
-        "performance" => 6,
-        "custom" => Math.Clamp((uint)CpuCores, 2u, 12u),
-        _ => 4,
-    };
-
-    public uint EffectiveMemoryMb => PerformanceMode switch
-    {
-        "eco" => 3072,
-        "performance" => 8192,
-        "custom" => Math.Clamp(MemoryMb, 3072u, 16384u),
-        _ => 6144,
-    };
-
-    public uint CaptureFrameRate => Math.Clamp(MaxFrameRate, 30u, 60u);
-
-    public uint PresentationFrameRate
-        => FrameInterpolation ? Math.Clamp(MaxFrameRate, 30u, 240u) : CaptureFrameRate;
 }
