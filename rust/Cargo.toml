@@ -1,5 +1,5 @@
 [workspace]
-members = ["simulatorctl", "androidsimulator-apkicon"]
+members = ["simulatorctl", "androidsimulator-apkicon", "androidsimulator-core"]
 resolver = "3"
 
 [profile.release]
