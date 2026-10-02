@@ -34,6 +34,7 @@ const OWNED_START_LOCK_TIMEOUT: Duration = Duration::from_secs(210);
 const OWNED_QEMU_STARTUP_GRACE: Duration = Duration::from_secs(5);
 const OWNED_QEMU_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const WINDOWS_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 #[cfg(test)]
 const WINDOWS_BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
 const WINDOWS_NORMAL_PRIORITY_CLASS: u32 = 0x0000_0020;
@@ -1483,7 +1484,7 @@ fn start_owned_qemu(runtime: OwnedRuntimeReport, pid_path: &Path) -> Result<Owne
     let log_file = fs::File::create(&log_path)?;
     let mut command = Command::new(&command_line[0]);
     command.args(&command_line[1..]);
-    configure_owned_qemu_command(
+    configure_owned_qemu_runtime_command(
         &mut command,
         &runtime.toolchain_root,
         &runtime.qemu_data_root,
@@ -1933,7 +1934,7 @@ fn joined_search_path<'a>(
     env::join_paths(path_entries).map_err(Into::into)
 }
 
-fn configure_owned_qemu_command(
+fn configure_owned_qemu_environment(
     command: &mut Command,
     toolchain_root: &Path,
     qemu_data_root: &Path,
@@ -1948,16 +1949,93 @@ fn configure_owned_qemu_command(
         .current_dir(environment.current_dir)
         .env("PATH", environment.path)
         .env("QEMU_DATADIR", environment.qemu_data_dir);
+    Ok(())
+}
+
+fn configure_owned_qemu_command(
+    command: &mut Command,
+    toolchain_root: &Path,
+    qemu_data_root: &Path,
+) -> Result<()> {
+    configure_owned_qemu_environment(command, toolchain_root, qemu_data_root)?;
     configure_background_process(command);
+    Ok(())
+}
+
+fn configure_owned_qemu_runtime_command(
+    command: &mut Command,
+    toolchain_root: &Path,
+    qemu_data_root: &Path,
+) -> Result<()> {
+    configure_owned_qemu_environment(command, toolchain_root, qemu_data_root)?;
+    configure_owned_qemu_runtime_process(command)
+}
+
+#[cfg(windows)]
+fn owned_qemu_runtime_creation_flags() -> Result<u32> {
+    use std::{ffi::c_void, mem::size_of, ptr::null_mut};
+    use windows_sys::Win32::System::{
+        JobObjects::{
+            IsProcessInJob, JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            QueryInformationJobObject,
+        },
+        Threading::GetCurrentProcess,
+    };
+
+    let mut in_job = 0;
+    if unsafe { IsProcessInJob(GetCurrentProcess(), null_mut(), &mut in_job) } == 0 {
+        return Err(std::io::Error::last_os_error())
+            .context("failed to determine current Windows job membership");
+    }
+
+    if in_job == 0 {
+        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS);
+    }
+
+    let mut information = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    if unsafe {
+        QueryInformationJobObject(
+            null_mut(),
+            JobObjectExtendedLimitInformation,
+            (&raw mut information).cast::<c_void>(),
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            null_mut(),
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error())
+            .context("failed to query current Windows job limits");
+    }
+
+    let limits = information.BasicLimitInformation.LimitFlags;
+    if limits & JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK != 0 {
+        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS);
+    }
+    if limits & JOB_OBJECT_LIMIT_BREAKAWAY_OK != 0 {
+        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS | WINDOWS_CREATE_BREAKAWAY_FROM_JOB);
+    }
+
+    bail!("current Windows job does not permit owned QEMU to outlive its launcher");
+}
+
+#[cfg(windows)]
+fn configure_owned_qemu_runtime_process(command: &mut Command) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(owned_qemu_runtime_creation_flags()?);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn configure_owned_qemu_runtime_process(_command: &mut Command) -> Result<()> {
     Ok(())
 }
 
 #[cfg(windows)]
 fn configure_background_process(command: &mut Command) {
     use std::os::windows::process::CommandExt;
-    // The guest performs rendering, input dispatch and host-network forwarding.
-    // Force normal priority so efficiency/idle inheritance cannot turn touch
-    // and network operations into multi-second stalls.
+    // Short-lived helper tools should remain inside the launcher's job. Only
+    // the owned qemu-system runtime needs to outlive the launcher process.
     command.creation_flags(WINDOWS_BACKGROUND_CREATION_FLAGS);
 }
 
@@ -2877,6 +2955,19 @@ mod tests {
             WINDOWS_BACKGROUND_CREATION_FLAGS & WINDOWS_BELOW_NORMAL_PRIORITY_CLASS,
             0
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_owned_job_aware_child_flags_can_spawn_from_current_job() {
+        use std::os::windows::process::CommandExt;
+
+        let status = Command::new("cmd.exe")
+            .args(["/d", "/c", "exit", "0"])
+            .creation_flags(owned_qemu_runtime_creation_flags().unwrap())
+            .status()
+            .unwrap();
+        assert!(status.success());
     }
 
     #[test]
