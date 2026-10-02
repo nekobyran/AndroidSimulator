@@ -326,13 +326,6 @@ function Invoke-BuildRust {
                 -Wait `
                 -PassThru
             if ($process.ExitCode -ne 0) { throw "cargo build failed: $($process.ExitCode)" }
-            $hostProcess = Start-Process `
-                -FilePath $Cargo `
-                -ArgumentList @('build', '-p', 'simulatorctl', '--bin', 'androidsimulator-host', '--release') `
-                -NoNewWindow `
-                -Wait `
-                -PassThru
-            if ($hostProcess.ExitCode -ne 0) { throw "native host release build failed: $($hostProcess.ExitCode)" }
         } finally {
             Pop-Location
         }
