@@ -426,11 +426,7 @@ public static class SimulatorCtlService
         return RunAsync(cancellationToken, args.ToArray());
     }
 
-    internal static string ResolveHostLauncher()
-    {
-        var host = Path.Combine(AppContext.BaseDirectory, "AndroidSimulator.Host.exe");
-        return File.Exists(host) ? host : ResolveLauncher();
-    }
+    internal static string ResolveHostLauncher() => ResolveLauncher();
 
     public static Task<SimulatorCommandResult<JsonElement?>> RenameAppAsync(
         string packageName,
