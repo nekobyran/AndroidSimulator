@@ -60,12 +60,12 @@ jobs:
           dotnet-version: 10.0.x
       - uses: dtolnay/rust-toolchain@stable
       - name: Build release control layer
-        run: cargo build --manifest-path rust/Cargo.toml -p simulatorctl -p androidsimulator-apkicon --release
+        run: cargo build --manifest-path rust/Cargo.toml -p simulatorctl -p androidsimulator-apkicon -p androidsimulator-core --release
       - name: Publish WinUI release payload
         shell: pwsh
         run: |
           dotnet publish src/AndroidSimulator.App/AndroidSimulator.App.csproj -c Release -r win-x64 --self-contained false -p:Platform=x64 -o release-payload
-          foreach ($required in @('AndroidSimulator.App.exe', 'simulatorctl.exe', 'AndroidSimulator.ApkIcon.dll')) {
+          foreach ($required in @('AndroidSimulator.App.exe', 'simulatorctl.exe', 'AndroidSimulator.ApkIcon.dll', 'AndroidSimulator.Core.dll')) {
             if (-not (Test-Path -LiteralPath (Join-Path 'release-payload' $required) -PathType Leaf)) {
               throw "Release payload missing $required"
             }
