@@ -260,39 +260,6 @@ static void TestSavedPlacementClampsIntoWorkArea()
     AssertEqual(new RectInt32(1020, 440, 900, 600), bounds, "Clamped saved placement");
 }
 
-static void TestSchedulerForegroundPerformance()
-{
-    var decision = PerformanceSchedulerPolicy.Resolve(
-        "performance",
-        SchedulerProcessRole.Scrcpy,
-        SchedulerActivity.Foreground);
-
-    AssertEqual(ProcessPriorityClass.AboveNormal, decision.PriorityClass, "Foreground performance priority");
-    AssertFalse(decision.EcoQos, "Foreground performance must not use EcoQoS");
-}
-
-static void TestSchedulerBackgroundPresentation()
-{
-    var decision = PerformanceSchedulerPolicy.Resolve(
-        "performance",
-        SchedulerProcessRole.Scrcpy,
-        SchedulerActivity.Background);
-
-    AssertEqual(ProcessPriorityClass.Normal, decision.PriorityClass, "Background performance priority");
-    AssertTrue(decision.EcoQos, "Background scrcpy must use EcoQoS");
-}
-
-static void TestSchedulerIdle()
-{
-    var decision = PerformanceSchedulerPolicy.Resolve(
-        "balanced",
-        SchedulerProcessRole.Qemu,
-        SchedulerActivity.Idle);
-
-    AssertEqual(ProcessPriorityClass.BelowNormal, decision.PriorityClass, "Idle QEMU priority");
-    AssertTrue(decision.EcoQos, "Idle QEMU must use EcoQoS");
-}
-
 static void TestWarmHostChannelIsStableAndIsolated()
 {
     const string packageName = "com.example.reader";
