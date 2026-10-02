@@ -265,11 +265,9 @@ public sealed partial class MainWindow : Window
     private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
     {
         _isWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
-        LatencyPriorityService.SetCurrentProcessActivity(_isWindowActive);
-        if (_hostedAppMetadata is not null)
-        {
-            LatencyPriorityService.Refresh(_hostedAppMetadata.WindowProcessId, _isWindowActive);
-        }
+        LatencyPriorityService.SetCurrentProcessActivity(
+            _runtimeSettings.PerformanceMode,
+            _isWindowActive);
 
         if (!_isDirectLaunchPresentation)
         {
@@ -737,11 +735,9 @@ public sealed partial class MainWindow : Window
     {
         _runtimeSettings = SimulatorRuntimeSettings.LoadFromDisk();
         ApplyWindowResizePolicy();
-        LatencyPriorityService.SetCurrentProcessActivity(_isWindowActive);
-        if (_hostedAppMetadata is not null)
-        {
-            LatencyPriorityService.Refresh(_hostedAppMetadata.WindowProcessId, _isWindowActive);
-        }
+        LatencyPriorityService.SetCurrentProcessActivity(
+            _runtimeSettings.PerformanceMode,
+            _isWindowActive);
     }
 
     private void ApplyWindowResizePolicy()
@@ -1127,7 +1123,9 @@ public sealed partial class MainWindow : Window
         var metadata = _hostedAppMetadata;
         if (metadata is not null)
         {
-            LatencyPriorityService.Refresh(metadata.WindowProcessId, _isWindowActive);
+            LatencyPriorityService.SetCurrentProcessActivity(
+                _runtimeSettings.PerformanceMode,
+                _isWindowActive);
         }
         var isHealthy = target is not null
             && App.AppWindows.IsHostedWindowAttachedTo(target, _windowHandle);
