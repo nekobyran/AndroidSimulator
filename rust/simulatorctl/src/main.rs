@@ -2023,10 +2023,7 @@ fn owned_qemu_runtime_creation_flags() -> Result<u32> {
             .context("failed to query current Windows job limits");
     }
 
-    owned_qemu_creation_flags_for_job_limits(
-        true,
-        information.BasicLimitInformation.LimitFlags,
-    )
+    owned_qemu_creation_flags_for_job_limits(true, information.BasicLimitInformation.LimitFlags)
 }
 
 #[cfg(windows)]
@@ -2979,11 +2976,8 @@ mod tests {
             WINDOWS_BACKGROUND_CREATION_FLAGS
         );
         assert_eq!(
-            owned_qemu_creation_flags_for_job_limits(
-                true,
-                JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
-            )
-            .unwrap(),
+            owned_qemu_creation_flags_for_job_limits(true, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,)
+                .unwrap(),
             WINDOWS_BACKGROUND_CREATION_FLAGS
         );
         assert_eq!(
