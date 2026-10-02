@@ -261,6 +261,29 @@ function Invoke-VerifyScrcpy {
     } | ConvertTo-Json -Depth 3
 }
 
+function Get-CoreDllPath {
+    param([ValidateSet('debug', 'release')][string]$Profile = 'debug')
+    $candidate = Join-Path $CargoTarget "$Profile\androidsimulator_core.dll"
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        return $candidate
+    }
+    return $null
+}
+
+function Copy-CoreDllBeside {
+    param(
+        [Parameter(Mandatory)][string]$DestinationDir,
+        [ValidateSet('debug', 'release')][string]$Profile = 'debug'
+    )
+    $source = Get-CoreDllPath -Profile $Profile
+    if (-not $source) {
+        throw "AndroidSimulator.Core.dll was not produced by the $Profile Rust build."
+    }
+    $destination = Join-Path $DestinationDir 'AndroidSimulator.Core.dll'
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    $destination
+}
+
 function Get-ApkIconDllPath {
     param([ValidateSet('debug', 'release')][string]$Profile = 'debug')
     $candidate = Join-Path $CargoTarget "$Profile\androidsimulator_apkicon.dll"
@@ -298,7 +321,7 @@ function Invoke-BuildRust {
         try {
             $process = Start-Process `
                 -FilePath $Cargo `
-                -ArgumentList @('build', '-p', 'simulatorctl', '-p', 'androidsimulator-apkicon') `
+                -ArgumentList @('build', '-p', 'simulatorctl', '-p', 'androidsimulator-apkicon', '-p', 'androidsimulator-core') `
                 -NoNewWindow `
                 -Wait `
                 -PassThru
@@ -323,7 +346,7 @@ function Invoke-BuildRustRelease {
         try {
             $process = Start-Process `
                 -FilePath $Cargo `
-                -ArgumentList @('build', '-p', 'simulatorctl', '-p', 'androidsimulator-apkicon', '--release') `
+                -ArgumentList @('build', '-p', 'simulatorctl', '-p', 'androidsimulator-apkicon', '-p', 'androidsimulator-core', '--release') `
                 -NoNewWindow `
                 -Wait `
                 -PassThru
@@ -418,6 +441,7 @@ function Export-WindowsBuild {
     }
     $profile = if ($Configuration -eq 'Release') { 'release' } else { 'debug' }
     Copy-ApkIconDllBeside -DestinationDir $candidate.DirectoryName -Profile $profile | Out-Null
+    Copy-CoreDllBeside -DestinationDir $candidate.DirectoryName -Profile $profile | Out-Null
 
     $destinationPath = [IO.Path]::GetFullPath($Destination)
     $releaseRootPrefix = [IO.Path]::GetFullPath($ReleaseRoot).TrimEnd('\') + '\'
