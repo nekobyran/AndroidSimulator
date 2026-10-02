@@ -46,23 +46,11 @@
       CopyToPublishDirectory="PreserveNewest"
       Condition="'$(Configuration)' == 'Debug' and Exists('$(CARGO_TARGET_DIR)\debug\simulatorctl.exe')" />
     <Content
-      Include="$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe"
-      Link="AndroidSimulator.Host.exe"
-      CopyToOutputDirectory="PreserveNewest"
-      CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' == 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe')" />
-    <Content
       Include="$(CARGO_TARGET_DIR)\release\simulatorctl.exe"
       Link="simulatorctl.exe"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
       Condition="'$(Configuration)' != 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\simulatorctl.exe')" />
-    <Content
-      Include="$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe"
-      Link="AndroidSimulator.Host.exe"
-      CopyToOutputDirectory="PreserveNewest"
-      CopyToPublishDirectory="PreserveNewest"
-      Condition="'$(Configuration)' != 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe')" />
     <Content
       Include="$(CARGO_TARGET_DIR)\debug\androidsimulator_core.dll"
       Link="AndroidSimulator.Core.dll"
