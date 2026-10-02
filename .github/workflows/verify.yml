@@ -31,6 +31,9 @@ jobs:
         run: cargo test --manifest-path rust/Cargo.toml --workspace
       - name: Rust clippy
         run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+      - name: Rust core ownership audit
+        shell: pwsh
+        run: .\command\Verify-RustCore.ps1
       - name: Windows contract tests
         run: dotnet run --project src/AndroidSimulator.App.Tests/AndroidSimulator.App.Tests.csproj -c Release
       - name: WinUI release build
