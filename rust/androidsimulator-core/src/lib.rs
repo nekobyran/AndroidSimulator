@@ -200,10 +200,7 @@ fn set_process_performance_state(_pid: u32, _policy: PerformancePolicy) -> Resul
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn AndroidSimulatorSetCurrentProcessActivity(
-    mode: u32,
-    activity: u32,
-) -> i32 {
+pub extern "system" fn AndroidSimulatorSetCurrentProcessActivity(mode: u32, activity: u32) -> i32 {
     let Ok(mode) = PerformanceMode::try_from(mode) else {
         return 87;
     };
