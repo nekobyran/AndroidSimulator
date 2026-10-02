@@ -1992,8 +1992,8 @@ fn owned_qemu_runtime_creation_flags() -> Result<u32> {
     use std::{ffi::c_void, mem::size_of, ptr::null_mut};
     use windows_sys::Win32::System::{
         JobObjects::{
-            IsProcessInJob, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-            QueryInformationJobObject,
+            IsProcessInJob, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JobObjectExtendedLimitInformation, QueryInformationJobObject,
         },
         Threading::GetCurrentProcess,
     };
