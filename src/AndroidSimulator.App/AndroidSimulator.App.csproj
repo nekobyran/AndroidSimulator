@@ -64,11 +64,23 @@
       CopyToPublishDirectory="PreserveNewest"
       Condition="'$(Configuration)' != 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\androidsimulator-host.exe')" />
     <Content
+      Include="$(CARGO_TARGET_DIR)\debug\androidsimulator_core.dll"
+      Link="AndroidSimulator.Core.dll"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' == 'Debug' and Exists('$(CARGO_TARGET_DIR)\debug\androidsimulator_core.dll')" />
+    <Content
       Include="$(CARGO_TARGET_DIR)\debug\androidsimulator_apkicon.dll"
       Link="AndroidSimulator.ApkIcon.dll"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
       Condition="'$(Configuration)' == 'Debug' and Exists('$(CARGO_TARGET_DIR)\debug\androidsimulator_apkicon.dll')" />
+    <Content
+      Include="$(CARGO_TARGET_DIR)\release\androidsimulator_core.dll"
+      Link="AndroidSimulator.Core.dll"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Condition="'$(Configuration)' != 'Debug' and Exists('$(CARGO_TARGET_DIR)\release\androidsimulator_core.dll')" />
     <Content
       Include="$(CARGO_TARGET_DIR)\release\androidsimulator_apkicon.dll"
       Link="AndroidSimulator.ApkIcon.dll"
