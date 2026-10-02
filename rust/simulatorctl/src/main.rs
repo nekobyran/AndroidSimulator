@@ -1972,12 +1972,27 @@ fn configure_owned_qemu_runtime_command(
 }
 
 #[cfg(windows)]
+fn owned_qemu_creation_flags_for_job_limits(in_job: bool, limits: u32) -> Result<u32> {
+    use windows_sys::Win32::System::JobObjects::{
+        JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+    };
+
+    if !in_job || limits & JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK != 0 {
+        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS);
+    }
+    if limits & JOB_OBJECT_LIMIT_BREAKAWAY_OK != 0 {
+        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS | WINDOWS_CREATE_BREAKAWAY_FROM_JOB);
+    }
+
+    bail!("current Windows job does not permit owned QEMU to outlive its launcher");
+}
+
+#[cfg(windows)]
 fn owned_qemu_runtime_creation_flags() -> Result<u32> {
     use std::{ffi::c_void, mem::size_of, ptr::null_mut};
     use windows_sys::Win32::System::{
         JobObjects::{
-            IsProcessInJob, JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            IsProcessInJob, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
             QueryInformationJobObject,
         },
         Threading::GetCurrentProcess,
@@ -1990,7 +2005,7 @@ fn owned_qemu_runtime_creation_flags() -> Result<u32> {
     }
 
     if in_job == 0 {
-        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS);
+        return owned_qemu_creation_flags_for_job_limits(false, 0);
     }
 
     let mut information = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
@@ -2008,15 +2023,10 @@ fn owned_qemu_runtime_creation_flags() -> Result<u32> {
             .context("failed to query current Windows job limits");
     }
 
-    let limits = information.BasicLimitInformation.LimitFlags;
-    if limits & JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK != 0 {
-        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS);
-    }
-    if limits & JOB_OBJECT_LIMIT_BREAKAWAY_OK != 0 {
-        return Ok(WINDOWS_BACKGROUND_CREATION_FLAGS | WINDOWS_CREATE_BREAKAWAY_FROM_JOB);
-    }
-
-    bail!("current Windows job does not permit owned QEMU to outlive its launcher");
+    owned_qemu_creation_flags_for_job_limits(
+        true,
+        information.BasicLimitInformation.LimitFlags,
+    )
 }
 
 #[cfg(windows)]
@@ -2959,15 +2969,28 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn test_owned_job_aware_child_flags_can_spawn_from_current_job() {
-        use std::os::windows::process::CommandExt;
+    fn test_owned_job_aware_creation_flags_follow_job_breakaway_contract() {
+        use windows_sys::Win32::System::JobObjects::{
+            JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+        };
 
-        let status = Command::new("cmd.exe")
-            .args(["/d", "/c", "exit", "0"])
-            .creation_flags(owned_qemu_runtime_creation_flags().unwrap())
-            .status()
-            .unwrap();
-        assert!(status.success());
+        assert_eq!(
+            owned_qemu_creation_flags_for_job_limits(false, 0).unwrap(),
+            WINDOWS_BACKGROUND_CREATION_FLAGS
+        );
+        assert_eq!(
+            owned_qemu_creation_flags_for_job_limits(
+                true,
+                JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+            )
+            .unwrap(),
+            WINDOWS_BACKGROUND_CREATION_FLAGS
+        );
+        assert_eq!(
+            owned_qemu_creation_flags_for_job_limits(true, JOB_OBJECT_LIMIT_BREAKAWAY_OK).unwrap(),
+            WINDOWS_BACKGROUND_CREATION_FLAGS | WINDOWS_CREATE_BREAKAWAY_FROM_JOB
+        );
+        assert!(owned_qemu_creation_flags_for_job_limits(true, 0).is_err());
     }
 
     #[test]
